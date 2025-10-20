@@ -233,13 +233,19 @@ class _DataManagementPageState extends State<DataManagementPage> {
       }
 
       
+      // 先导航到当前页面，确保聊天页面不再使用数据库
+      if (mounted) {
+        context.read<AppState>().setCurrentPage('data_management');
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+      
       // 关闭数据库连接，避免文件占用
       if (mounted) {
         await context.read<AppState>().databaseService.close();
       }
       
-      // Windows 需要更长时间释放文件句柄，等待 500ms
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Windows 需要更长时间释放文件句柄，等待 2500ms
+      await Future.delayed(const Duration(milliseconds: 2500));
       
 
       // -- 开始并行解密--
@@ -282,14 +288,17 @@ class _DataManagementPageState extends State<DataManagementPage> {
           }
 
           if (await targetFile.exists()) {
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < 10; i++) {
               try {
                 await targetFile.delete();
                 break;
               } catch (e) {
-                if (i < 4) {
-                  await Future.delayed(Duration(milliseconds: 200 * (i + 1)));
-                } else { rethrow; }
+                if (i < 9) {
+                  final delayMs = 300 * (i + 1);
+                  await Future.delayed(Duration(milliseconds: delayMs));
+                } else {
+                  rethrow;
+                }
               }
             }
           }
@@ -350,10 +359,12 @@ class _DataManagementPageState extends State<DataManagementPage> {
         } catch (reconnectError) {
         }
       }
-      
-      setState(() {
-        _isDecrypting = false;
-      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDecrypting = false;
+        });
+      }
     }
   }
 
@@ -388,13 +399,19 @@ class _DataManagementPageState extends State<DataManagementPage> {
         return;
       }
       
+      // 先导航到当前页面，确保聊天页面不再使用数据库
+      if (mounted) {
+        context.read<AppState>().setCurrentPage('data_management');
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+      
       // 关闭数据库连接，避免文件占用
       if (mounted) {
         await context.read<AppState>().databaseService.close();
       }
       
-      // Windows 需要更长时间释放文件句柄，等待 500ms
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Windows 需要更长时间释放文件句柄，等待 2500ms
+      await Future.delayed(const Duration(milliseconds: 2500));
       
 
       // -- 开始串行更新 --
@@ -420,14 +437,17 @@ class _DataManagementPageState extends State<DataManagementPage> {
           // -- 更新成功后的文件操作 --
           final targetFile = File(file.decryptedPath);
           if (await targetFile.exists()) {
-            for (int i = 0; i < 5; i++) {
+            for (int i = 0; i < 10; i++) {
               try {
                 await targetFile.delete();
                 break;
               } catch (e) {
-                if (i < 4) {
-                  await Future.delayed(Duration(milliseconds: 200 * (i + 1)));
-                } else { rethrow; }
+                if (i < 9) {
+                  final delayMs = 300 * (i + 1);
+                  await Future.delayed(Duration(milliseconds: delayMs));
+                } else {
+                  rethrow;
+                }
               }
             }
           }
@@ -521,13 +541,19 @@ class _DataManagementPageState extends State<DataManagementPage> {
         return;
       }
       
+      // 先导航到当前页面，确保聊天页面不再使用数据库
+      if (mounted) {
+        context.read<AppState>().setCurrentPage('data_management');
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+      
       // 关闭数据库连接，避免文件占用
       if (mounted) {
         await context.read<AppState>().databaseService.close();
       }
       
-      // Windows 需要更长时间释放文件句柄，等待 500ms
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Windows 需要更长时间释放文件句柄，等待 2500ms
+      await Future.delayed(const Duration(milliseconds: 2500));
       
 
       final decryptedPath = await _decryptService.decryptDatabase(file.originalPath, key, (current, total) {
@@ -551,13 +577,14 @@ class _DataManagementPageState extends State<DataManagementPage> {
       
       // 删除旧文件（如果存在，带重试机制）
       if (await targetFile.exists()) {
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 10; i++) {
           try {
             await targetFile.delete();
             break;
           } catch (e) {
-            if (i < 4) {
-              await Future.delayed(Duration(milliseconds: 200 * (i + 1)));
+            if (i < 9) {
+              final delayMs = 300 * (i + 1);
+              await Future.delayed(Duration(milliseconds: delayMs));
             } else {
               rethrow;
             }

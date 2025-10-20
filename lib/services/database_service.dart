@@ -7,10 +7,12 @@ import 'package:path_provider/path_provider.dart';
 import '../models/message.dart';
 import '../models/contact.dart';
 import '../models/chat_session.dart';
+import 'wechat_vfs_native.dart';
 
-/// 数据库读取模式（仅支持备份模式）
+/// 数据库读取模式
 enum DatabaseMode {
-  decrypted,  // 使用解密后的数据库
+  decrypted,  // 使用解密后的数据库（备份模式）
+  realtime,   // 实时读取加密数据库（VFS拦截模式）
 }
 
 /// 数据库操作服务
@@ -77,6 +79,40 @@ class DatabaseService {
     _mode = DatabaseMode.decrypted;
     _sessionDbPath = dbPath;
     _currentAccountWxid = _extractWxidFromPath(dbPath);
+  }
+
+  /// 连接实时加密数据库（VFS拦截模式）
+  /// [dbPath] 加密数据库路径
+  /// [hexKey] 解密密钥（64位十六进制）
+  /// [factory] 可选的数据库工厂
+  Future<void> connectRealtimeDatabase(String dbPath, String hexKey, {DatabaseFactory? factory}) async {
+    if (!File(dbPath).existsSync()) {
+      throw Exception('数据库文件不存在');
+    }
+
+    // 保存工厂实例供后续使用
+    if (factory != null) {
+      _dbFactory = factory;
+    }
+
+    // 关闭旧的会话库连接
+    if (_sessionDb != null) {
+      await _sessionDb!.close();
+      _sessionDb = null;
+    }
+    
+    try {
+      // 使用真正的VFS拦截打开加密数据库
+      // 在SQLite文件系统层面拦截xRead操作，实时解密数据页
+      _sessionDb = await WeChatVFSNative.openEncryptedDatabase(dbPath, hexKey);
+
+      _mode = DatabaseMode.realtime;
+      _sessionDbPath = dbPath;
+      _currentAccountWxid = _extractWxidFromPath(dbPath);
+
+    } catch (e) {
+      rethrow; // 重新抛出异常，让上层处理
+    }
   }
   
   /// 获取当前使用的数据库工厂
@@ -306,7 +342,6 @@ class DatabaseService {
       
       return 0;
     } catch (e) {
-      print('获取消息数量失败: $e');
       return 0;
     }
   }
@@ -526,7 +561,6 @@ class DatabaseService {
       }
       return resultMap;
     } catch (e) {
-      print('getSessionMessagesByDate error for $sessionId: $e');
       return {};
     }
   }
@@ -566,7 +600,6 @@ class DatabaseService {
         return DateTime.parse(dateStr);
       }).toList();
     } catch (e) {
-      print('getSessionMessageDates error for $sessionId: $e');
       return [];
     }
   }
@@ -621,7 +654,6 @@ class DatabaseService {
             });
           }
         } catch (e) {
-          print('Error querying table $tableName: $e');
         }
       }
       
@@ -630,7 +662,6 @@ class DatabaseService {
       
       return results;
     } catch (e) {
-      print('getMyTextMessagesForLengthAnalysis error: $e');
       return [];
     }
   }
@@ -676,13 +707,11 @@ class DatabaseService {
             typeCount[type] = (typeCount[type] ?? 0) + count;
           }
         } catch (e) {
-          print('Error querying table $tableName: $e');
         }
       }
       
       return typeCount;
     } catch (e) {
-      print('getAllMessageTypeDistribution error: $e');
       return {};
     }
   }
@@ -731,7 +760,6 @@ class DatabaseService {
         'received': (row['received'] as int?) ?? 0,
       };
     } catch (e) {
-      print('getSessionMessageStats error for $sessionId: $e');
       return {
         'total': 0,
         'sent': 0,
@@ -778,14 +806,32 @@ class DatabaseService {
 
   /// 关闭数据库连接
   Future<void> close() async {
-    if (_sessionDb != null) {
-      await _sessionDb!.close();
+    
+    // 如果是实时模式，需要清理VFS资源
+    if (_mode == DatabaseMode.realtime && _sessionDbPath != null && _sessionDb != null) {
+      try {
+        await WeChatVFSNative.closeEncryptedDatabase(_sessionDb!, _sessionDbPath!);
+      } catch (e) {
+      }
+      _sessionDb = null;
+    } else if (_sessionDb != null) {
+      try {
+        await _sessionDb!.close();
+      } catch (e) {
+      }
       _sessionDb = null;
     }
+    
     if (_messageDb != null) {
-      await _messageDb!.close();
+      try {
+        await _messageDb!.close();
+      } catch (e) {
+      }
       _messageDb = null;
     }
+    
+    // 强制触发垃圾回收，帮助释放文件句柄
+    await Future.delayed(const Duration(milliseconds: 100));
   }
 
   /// 检查数据库是否已连接

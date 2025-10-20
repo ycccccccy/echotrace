@@ -5,7 +5,7 @@ class ConfigService {
   static const String _keyDecryptKey = 'decrypt_key';
   static const String _keyDatabasePath = 'database_path';
   static const String _keyIsConfigured = 'is_configured';
-  static const String _keyUseRealtimeMode = 'use_realtime_mode'; // 废弃，仅用于兼容性清理
+  static const String _keyDatabaseMode = 'database_mode'; // 'realtime' 或 'backup'
 
   /// 保存解密密钥
   Future<void> saveDecryptKey(String key) async {
@@ -43,10 +43,16 @@ class ConfigService {
     return prefs.getBool(_keyIsConfigured) ?? false;
   }
 
-  /// 移除实时模式设置（不再支持实时模式）
-  Future<void> removeUseRealtimeMode() async {
+  /// 保存数据库模式
+  Future<void> saveDatabaseMode(String mode) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_keyUseRealtimeMode);
+    await prefs.setString(_keyDatabaseMode, mode);
+  }
+
+  /// 获取数据库模式（默认为备份模式）
+  Future<String> getDatabaseMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyDatabaseMode) ?? 'backup';
   }
 
   /// 清除所有配置
@@ -55,6 +61,6 @@ class ConfigService {
     await prefs.remove(_keyDecryptKey);
     await prefs.remove(_keyDatabasePath);
     await prefs.remove(_keyIsConfigured);
-    await prefs.remove(_keyUseRealtimeMode); // 兼容性：移除旧的实时模式设置
+    await prefs.remove(_keyDatabaseMode);
   }
 }

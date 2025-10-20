@@ -7,6 +7,7 @@ import '../widgets/chat_session_item.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/message_loading_shimmer.dart';
 import '../utils/string_utils.dart';
+import '../services/chat_export_service.dart';
 
 /// 聊天记录页面
 class ChatPage extends StatefulWidget {
@@ -79,7 +80,7 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
         }
         return; // 数据库未连接，不显示错误，由UI显示提示
       }
-      
+
       final sessions = await appState.databaseService.getSessions();
       
       // 过滤掉公众号/服务号（gh_ 开头）和其他非聊天会话
@@ -335,6 +336,157 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
     return '群成员';
   }
 
+  /// 显示导出选项对话框
+  void _showExportDialog() {
+    if (_selectedSession == null || _messages.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先选择会话并加载消息')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('导出聊天记录'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('会话: ${_getSessionDisplayName(_selectedSession!)}'),
+            const SizedBox(height: 8),
+            Text('消息数量: ${_messages.length} 条'),
+            const SizedBox(height: 16),
+            const Text('请选择导出格式:'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _exportChat('json');
+            },
+            child: const Text('JSON'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _exportChat('html');
+            },
+            child: const Text('HTML'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _exportChat('excel');
+            },
+            child: const Text('Excel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 导出聊天记录
+  Future<void> _exportChat(String format) async {
+    if (_selectedSession == null || _messages.isEmpty) return;
+
+    try {
+      // 显示加载中对话框
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('正在导出...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // 首先获取所有消息（而不只是当前加载的）
+      final appState = context.read<AppState>();
+      final allMessages = await _getAllMessages(appState);
+
+      final exportService = ChatExportService(appState.databaseService);
+      bool success = false;
+
+      switch (format) {
+        case 'json':
+          success = await exportService.exportToJson(_selectedSession!, allMessages);
+          break;
+        case 'html':
+          success = await exportService.exportToHtml(_selectedSession!, allMessages);
+          break;
+        case 'excel':
+          success = await exportService.exportToExcel(_selectedSession!, allMessages);
+          break;
+      }
+
+      // 关闭加载对话框
+      if (mounted) {
+        Navigator.pop(context);
+      }
+
+      // 显示结果
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success ? '导出成功' : '导出失败'),
+            backgroundColor: success ? Colors.green : Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      // 关闭加载对话框
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导出失败: $e')),
+        );
+      }
+    }
+  }
+
+  /// 获取会话的所有消息
+  Future<List<Message>> _getAllMessages(AppState appState) async {
+    if (_selectedSession == null) return [];
+
+    final List<Message> allMessages = [];
+    int offset = 0;
+    const int limit = 1000;
+
+    while (true) {
+      final messages = await appState.databaseService.getMessages(
+        _selectedSession!.username,
+        limit: limit,
+        offset: offset,
+      );
+
+      if (messages.isEmpty) break;
+
+      allMessages.addAll(messages);
+      offset += messages.length;
+
+      if (messages.length < limit) break;
+    }
+
+    return allMessages.reversed.toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -523,6 +675,11 @@ class _ChatPageState extends State<ChatPage> with SingleTickerProviderStateMixin
                                 ),
                               ],
                             ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.download_rounded),
+                            onPressed: _showExportDialog,
+                            tooltip: '导出聊天记录',
                           ),
                         ],
                       ),

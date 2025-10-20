@@ -35,6 +35,7 @@ class _DualReportDisplayPageState extends State<DualReportDisplayPage> {
   }
 
   void _buildPages() {
+    // 显示完整的报告页面
     _pages = [
       _buildCoverPage(),
       _buildBasicStatsPage(),
@@ -776,6 +777,7 @@ class _DualReportDisplayPageState extends State<DualReportDisplayPage> {
       ),
     );
   }
+
 
   // 结束页
   Widget _buildEndingPage() {

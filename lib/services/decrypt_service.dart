@@ -42,31 +42,7 @@ class _DecryptTask {
   });
 }
 
-/// 微信 4.x 数据库解密服务（独立Isolate版本）
-///
-/// 性能优化策略：
-/// 1. **独立Isolate解密**：每个数据库文件在独立Isolate中完整处理，解密完成后自动销毁
-/// 2. **跳过HMAC验证**：默认仅验证首页，跳过其他页面验证以大幅提速（约30-50%）
-/// 3. **一次性读取文件**：避免频繁文件I/O操作
-/// 4. **同步加密算法**：使用PointyCastle，减少异步调度开销
-/// 5. **实时进度报告**：通过消息传递保持UI响应
-/// 6. **简单稳定**：避免复杂的多线程同步，每个Isolate完全独立工作
-/// 
-/// 性能提升：
-/// - 跳过HMAC验证可获得约30-50%速度提升
-/// - 多数据库可并行解密（每个数据库一个Isolate）
-/// - 解密速度接近或超越Python版本
-/// 
-/// 使用方式：
-/// ```dart
-/// final service = DecryptService();
-/// final decryptedPath = await service.decryptDatabase(
-///   dbPath, 
-///   hexKey, 
-///   (current, total) => print('进度: $current/$total'),
-///   skipHmacValidation: true, // 默认值，可省略
-/// );
-/// ```
+/// 解密服务
 class DecryptService {
   // 微信 4.x 版本常量
   static const int pageSize = 4096;
@@ -83,9 +59,9 @@ class DecryptService {
     // 无需初始化操作
   }
 
-  /// 清理资源（兼容性方法）
+  /// 清理资源
   void dispose() {
-    // 无需清理操作
+    // 无需清理操作，仅提供方法签名
   }
 
   /// 验证密钥

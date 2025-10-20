@@ -52,6 +52,12 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
+# 暂时禁用VFS模式
+# add_library(wechat_vfs SHARED
+#   runner/wechat_vfs.cpp
+# )
+
+
 
 # Generated plugin build rules, which manage building the plugins and adding
 # them to the application.

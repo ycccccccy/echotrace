@@ -34,7 +34,6 @@ class AnalyticsCacheService {
       await prefs.setString(_keyCachedAt, DateTime.now().toIso8601String());
       await prefs.setInt(_keyDbModifiedTime, dbModifiedTime);
     } catch (e) {
-      print('保存基础分析缓存失败: $e');
     }
   }
 
@@ -48,7 +47,6 @@ class AnalyticsCacheService {
       final data = json.decode(dataString);
       return deserializeBasicResults(data);
     } catch (e) {
-      print('读取基础分析缓存失败: $e');
       return null;
     }
   }
@@ -73,7 +71,6 @@ class AnalyticsCacheService {
       await prefs.setString(_keyCachedAt, DateTime.now().toIso8601String());
       await prefs.setInt(_keyDbModifiedTime, dbModifiedTime);
     } catch (e) {
-      print('保存年度报告缓存失败: $e');
     }
   }
 
@@ -87,7 +84,6 @@ class AnalyticsCacheService {
       final data = json.decode(dataString);
       return deserializeResults(data);
     } catch (e) {
-      print('读取年度报告缓存失败: $e');
       return null;
     }
   }
@@ -100,7 +96,6 @@ class AnalyticsCacheService {
       await prefs.remove(_keyAnnualReport);
       await prefs.remove(_keyCachedAt);
     } catch (e) {
-      print('清除缓存失败: $e');
     }
   }
 
@@ -110,7 +105,6 @@ class AnalyticsCacheService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_keyBasicAnalytics);
     } catch (e) {
-      print('清除基础分析缓存失败: $e');
     }
   }
 
@@ -120,7 +114,6 @@ class AnalyticsCacheService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_keyAnnualReport);
     } catch (e) {
-      print('清除年度报告缓存失败: $e');
     }
   }
 

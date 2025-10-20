@@ -104,7 +104,6 @@ class _AnnualReportPageState extends State<AnnualReportPage> {
         _privateSessions = sortedSessions.map((e) => e.key).toList();
       });
     } catch (e) {
-      print('加载基础数据失败: $e');
     }
   }
 
@@ -1256,7 +1255,6 @@ class _AnnualReportPageState extends State<AnnualReportPage> {
         });
       }
     } catch (e) {
-      print('检测年份失败: $e');
     }
   }
 

@@ -143,7 +143,6 @@ class ResponseTimeAnalyzer {
           ));
         }
       } catch (e) {
-        print('分析 $username 响应时间失败: $e');
         continue;
       }
     }
@@ -215,7 +214,6 @@ class ResponseTimeAnalyzer {
           ));
         }
       } catch (e) {
-        print('分析 $username 响应时间失败: $e');
         continue;
       }
     }

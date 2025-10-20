@@ -23,8 +23,7 @@ class EchoTraceApp extends StatelessWidget {
         title: 'EchoTrace - 微信数据库查看器',
         debugShowCheckedModeBanner: false,
         theme: _buildLightTheme(),
-        darkTheme: _buildDarkTheme(),
-        themeMode: ThemeMode.system,
+        themeMode: ThemeMode.light,
         home: const HomePage(),
       ),
     );
@@ -90,54 +89,4 @@ class EchoTraceApp extends StatelessWidget {
     );
   }
 
-  /// 构建深色主题
-  ThemeData _buildDarkTheme() {
-    const wechatGreen = Color(0xFF07C160);
-    
-    return ThemeData(
-      useMaterial3: true,
-      fontFamily: 'HarmonyOS Sans SC',
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: wechatGreen,
-        brightness: Brightness.dark,
-        primary: wechatGreen,
-        secondary: wechatGreen,
-      ),
-      scaffoldBackgroundColor: const Color(0xFF1E1E1E),
-      cardTheme: CardThemeData(
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: wechatGreen,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: wechatGreen,
-          side: const BorderSide(color: wechatGreen),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-        ),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: wechatGreen, width: 2),
-        ),
-      ),
-    );
-  }
 }

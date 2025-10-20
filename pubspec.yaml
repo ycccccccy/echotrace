@@ -57,9 +57,18 @@ dependencies:
   xml: ^6.4.2
   
   # 压缩解压
-  archive: ^3.4.10
+  archive: ^3.6.1
   cryptography: ^2.7.0
   zstd: ^0.0.1-dev.2
+  
+  # HTTP 下载
+  http: ^1.2.0
+  
+  # FFI 用于直接调用 native 库
+  ffi: ^2.1.0
+  
+  # Excel 导出
+  excel: ^4.0.6
 
 dev_dependencies:
   flutter_test:

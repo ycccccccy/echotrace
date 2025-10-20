@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../services/dual_report_service.dart';
-import '../services/dual_report_cache_service.dart';
 import '../providers/app_state.dart';
 import 'package:provider/provider.dart';
 import 'friend_selector_page.dart';
@@ -15,63 +14,13 @@ class DualReportPage extends StatefulWidget {
 }
 
 class _DualReportPageState extends State<DualReportPage> {
-  int? _selectedYear;
-  bool _isGenerating = false;
-  String _currentTask = '';
-
   @override
   void initState() {
     super.initState();
-    // 在frame渲染完成后再显示对话框
+    // 在frame渲染完成后直接显示好友列表
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _showYearSelectionDialog();
+      _selectFriend();
     });
-  }
-
-  Future<void> _showYearSelectionDialog() async {
-    // 获取可用年份（这里简化处理，只提供最近几年）
-    final currentYear = DateTime.now().year;
-    final years = [currentYear, currentYear - 1, currentYear - 2];
-    
-    if (!mounted) return;
-    
-    final result = await showDialog<int?>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('选择年份'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('生成哪一年的双人报告？'),
-            const SizedBox(height: 16),
-            ...years.map((year) => ListTile(
-              title: Text('$year年'),
-              onTap: () => Navigator.pop(context, year),
-            )),
-            const Divider(),
-            ListTile(
-              title: const Text('历史以来'),
-              subtitle: const Text('所有聊天记录'),
-              onTap: () => Navigator.pop(context, null),
-            ),
-          ],
-        ),
-      ),
-    );
-    
-    if (result == null && !mounted) {
-      // 用户关闭对话框，返回上一页
-      Navigator.pop(context);
-      return;
-    }
-    
-    setState(() {
-      _selectedYear = result;
-    });
-    
-    // 选择好友
-    _selectFriend();
   }
 
   Future<void> _selectFriend() async {
@@ -87,7 +36,7 @@ class _DualReportPageState extends State<DualReportPage> {
       MaterialPageRoute(
         builder: (context) => FriendSelectorPage(
           dualReportService: dualReportService,
-          year: _selectedYear,
+          year: null, // 不限年份
         ),
       ),
     );
@@ -98,105 +47,53 @@ class _DualReportPageState extends State<DualReportPage> {
       return;
     }
     
-    // 生成报告
+    // 生成完整的双人报告
+    if (!mounted) return;
     await _generateReport(
       dualReportService: dualReportService,
       friendUsername: selectedFriend['username'] as String,
-      friendDisplayName: selectedFriend['displayName'] as String,
     );
   }
 
   Future<void> _generateReport({
     required DualReportService dualReportService,
     required String friendUsername,
-    required String friendDisplayName,
   }) async {
-    // 检查缓存
-    final cachedReport = await DualReportCacheService.loadReport(
-      friendUsername,
-      _selectedYear,
-    );
-    
-    if (cachedReport != null) {
-      // 使用缓存
-      if (mounted) {
-        _showReport(cachedReport);
-      }
-      return;
-    }
-    
-    // 生成新报告
-    setState(() {
-      _isGenerating = true;
-      _currentTask = '正在生成报告...';
-    });
-    
     try {
+      // 生成完整的双人报告数据
       final reportData = await dualReportService.generateDualReport(
         friendUsername: friendUsername,
-        filterYear: _selectedYear,
+        filterYear: null,
       );
       
-      // 保存到缓存
-      await DualReportCacheService.saveReport(
-        friendUsername,
-        _selectedYear,
-        reportData,
-      );
+      if (!mounted) return;
       
-      if (mounted) {
-        setState(() {
-          _isGenerating = false;
-        });
-        _showReport(reportData);
-      }
+      // 跳转到报告展示页面
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DualReportDisplayPage(reportData: reportData),
+        ),
+      );
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isGenerating = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('生成报告失败: $e')),
-        );
-        Navigator.pop(context);
-      }
+      if (!mounted) return;
+      
+      // 显示错误信息
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('生成报告失败: $e')),
+      );
+      Navigator.pop(context);
     }
-  }
-
-  void _showReport(Map<String, dynamic> reportData) {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => DualReportDisplayPage(reportData: reportData),
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF07C160),
+    return const Scaffold(
+      backgroundColor: Color(0xFF07C160),
       body: Center(
-        child: _isGenerating
-            ? Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    _currentTask,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              )
-            : const CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+        ),
       ),
     );
   }

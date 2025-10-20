@@ -31,9 +31,7 @@ class DualReportCacheService {
       final jsonString = jsonEncode(cacheData);
       await prefs.setString(key, jsonString);
       
-      print('双人报告已缓存: $key');
     } catch (e) {
-      print('保存双人报告缓存失败: $e');
     }
   }
 
@@ -60,16 +58,13 @@ class DualReportCacheService {
         final age = DateTime.now().difference(cachedAt);
         
         if (age > _cacheValidity) {
-          print('双人报告缓存已过期，将重新生成');
           await clearReport(friendUsername, year);
           return null;
         }
       }
       
-      print('从缓存加载双人报告: $key');
       return data;
     } catch (e) {
-      print('加载双人报告缓存失败: $e');
       return null;
     }
   }
@@ -91,9 +86,7 @@ class DualReportCacheService {
       final prefs = await SharedPreferences.getInstance();
       final key = _getCacheKey(friendUsername, year);
       await prefs.remove(key);
-      print('已清除双人报告缓存: $key');
     } catch (e) {
-      print('清除双人报告缓存失败: $e');
     }
   }
 
@@ -107,9 +100,7 @@ class DualReportCacheService {
         await prefs.remove(key);
       }
       
-      print('已清除所有双人报告缓存 (${keys.length} 个)');
     } catch (e) {
-      print('清除所有双人报告缓存失败: $e');
     }
   }
 

@@ -55,9 +55,14 @@ class AppState extends ChangeNotifier {
       // 启动时始终显示欢迎页面，让用户手动选择
       _currentPage = 'welcome';
       
-      // 如果已配置，自动连接已解密的数据库
+      // 如果已配置，根据配置的模式连接数据库
       if (_isConfigured) {
-        await _tryConnectDecryptedDatabase();
+        final mode = await configService.getDatabaseMode();
+        if (mode == 'realtime') {
+          await _tryConnectRealtimeDatabase();
+        } else {
+          await _tryConnectDecryptedDatabase();
+        }
       }
     } catch (e) {
       _errorMessage = '初始化失败: $e';
@@ -98,19 +103,121 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 设置解密状态
+  void setDecrypting(bool isDecrypting, {String database = '', int progress = 0, int total = 0}) {
+    _isDecrypting = isDecrypting;
+    _decryptingDatabase = database;
+    _decryptProgress = progress;
+    _decryptTotal = total;
+    notifyListeners();
+  }
+
   /// 重新连接数据库（公开方法，用于配置更改后重新连接）
   Future<void> reconnectDatabase() async {
     _isLoading = true;
     notifyListeners();
-    
+
     try {
-      await _tryConnectDecryptedDatabase();
+      // 获取配置的数据库模式
+      final mode = await configService.getDatabaseMode();
+
+      if (mode == 'realtime') {
+        try {
+          await _tryConnectRealtimeDatabase();
+        } catch (e) {
+          // 实时模式失败，回退到备份模式
+          await _tryConnectDecryptedDatabase();
+        }
+      } else {
+        await _tryConnectDecryptedDatabase();
+      }
     } catch (e) {
-      _errorMessage = '重新连接数据库失败: $e';
+      _errorMessage = '数据库连接失败: $e';
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// 尝试连接实时数据库（直接读取加密数据库）
+  Future<void> _tryConnectRealtimeDatabase() async {
+    try {
+      final hexKey = await configService.getDecryptKey();
+      if (hexKey == null) {
+        throw Exception('未配置解密密钥，请在设置中配置密钥');
+      }
+
+      final dbPath = await configService.getDatabasePath();
+      if (dbPath == null) {
+        throw Exception('未配置数据库路径，请在设置中选择数据库目录');
+      }
+
+      // 自动定位 session.db
+      final sessionDbPath = await _locateSessionDb(dbPath);
+      if (sessionDbPath == null) {
+        throw Exception('未找到session.db数据库文件，请检查微信数据库目录是否正确');
+      }
+
+
+      // 连接实时加密数据库
+      await databaseService.connectRealtimeDatabase(sessionDbPath, hexKey);
+
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  /// 定位 session.db 文件（递归搜索子目录）
+  Future<String?> _locateSessionDb(String dbStoragePath) async {
+    try {
+      final dbStorageDir = Directory(dbStoragePath);
+      if (!await dbStorageDir.exists()) {
+        return null;
+      }
+
+      // 递归搜索所有 .db 文件，寻找包含 session 的文件
+      final allDbFiles = await _findAllDbFilesRecursively(dbStorageDir);
+
+      // 优先查找文件名包含 session 的文件
+      final sessionFiles = allDbFiles.where((file) {
+        final fileName = file.path.split(Platform.pathSeparator).last.toLowerCase();
+        return fileName.contains('session') && fileName.endsWith('.db');
+      }).toList();
+
+      if (sessionFiles.isNotEmpty) {
+        for (final file in sessionFiles) {
+        }
+        return sessionFiles.first.path;
+      }
+
+      // 如果没找到session文件，打印所有找到的.db文件供调试
+      if (allDbFiles.isNotEmpty) {
+        for (final file in allDbFiles.take(5)) { // 只显示前5个
+        }
+        if (allDbFiles.length > 5) {
+        }
+      }
+
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// 递归查找所有 .db 文件
+  Future<List<File>> _findAllDbFilesRecursively(Directory dir) async {
+    final List<File> dbFiles = [];
+
+    try {
+      await for (final entity in dir.list(recursive: true)) {
+        if (entity is File && entity.path.endsWith('.db')) {
+          dbFiles.add(entity);
+        }
+      }
+    } catch (e) {
+    }
+
+    return dbFiles;
   }
 
   /// 尝试连接数据库（仅使用备份模式）

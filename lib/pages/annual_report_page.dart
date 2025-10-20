@@ -56,22 +56,6 @@ class _AnnualReportPageState extends State<AnnualReportPage> {
     // 不再自动检测年份，避免数据库锁定问题
   }
 
-  /// 打开双人报告
-  void _openDualReport() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('双人报告'),
-        content: const Text('功能制作中，敬请期待！'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('确定'),
-          ),
-        ],
-      ),
-    );
-  }
 
   /// 开始生成报告
   Future<void> _startGenerateReport() async {
@@ -108,13 +92,11 @@ class _AnnualReportPageState extends State<AnnualReportPage> {
     });
     
     try {
-      print('开始生成报告，年份: $_selectedYear');
       
       // 并行生成报告
       final data = await _backgroundService!.generateFullAnnualReport(
         _selectedYear,
         (taskName, status, progress) {
-          print('任务进度 - $taskName: $status ($progress%)');
           if (mounted) {
       setState(() {
               _taskStatus[taskName] = status;
@@ -124,12 +106,10 @@ class _AnnualReportPageState extends State<AnnualReportPage> {
         },
       );
       
-      print('报告生成完成，开始保存缓存');
       
       // 保存缓存
       await AnnualReportCacheService.saveReport(_selectedYear, data);
       
-      print('缓存保存完成，进入展示模式');
       
       // 进入展示模式
       if (mounted) {
@@ -138,9 +118,7 @@ class _AnnualReportPageState extends State<AnnualReportPage> {
           _currentState = ReportPageState.display;
         });
       }
-    } catch (e, stackTrace) {
-      print('生成报告失败: $e');
-      print('堆栈跟踪: $stackTrace');
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -215,7 +193,6 @@ class _AnnualReportPageState extends State<AnnualReportPage> {
             setState(() => _selectedYear = year);
           },
           onConfirm: _startGenerateReport,
-          onDualReport: _openDualReport, // 新增：打开双人报告
         );
         
       case ReportPageState.generating:

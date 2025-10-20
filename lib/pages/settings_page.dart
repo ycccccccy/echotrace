@@ -7,6 +7,7 @@ import '../providers/app_state.dart';
 import '../services/config_service.dart';
 import '../services/decrypt_service.dart';
 import '../services/annual_report_cache_service.dart';
+import '../services/database_service.dart';
 
 /// 设置页面
 class SettingsPage extends StatefulWidget {
@@ -27,6 +28,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _isLoading = false;
   String? _statusMessage;
   bool _isSuccess = false;
+  String _databaseMode = 'backup'; // 'backup' 或 'realtime'
 
   @override
   void initState() {
@@ -47,11 +49,13 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadConfig() async {
     final key = await _configService.getDecryptKey();
     final path = await _configService.getDatabasePath();
+    final mode = await _configService.getDatabaseMode();
 
     if (mounted) {
       setState(() {
         _keyController.text = key ?? '';
         _pathController.text = path ?? '';
+        _databaseMode = mode;
       });
     }
   }
@@ -225,7 +229,7 @@ class _SettingsPageState extends State<SettingsPage> {
       // 保存配置
       await _configService.saveDecryptKey(key);
       await _configService.saveDatabasePath(path);
-      await _configService.removeUseRealtimeMode(); // 移除实时模式设置
+      await _configService.saveDatabaseMode(_databaseMode);
 
       // 更新应用状态
       if (mounted) {
@@ -238,8 +242,11 @@ class _SettingsPageState extends State<SettingsPage> {
           await context.read<AppState>().reconnectDatabase();
 
           if (mounted) {
-            _showMessage('配置保存成功！当前使用备份模式', true);
-            
+            // 检查实际连接的模式
+            final currentMode = context.read<AppState>().databaseService.mode;
+            final actualModeText = currentMode == DatabaseMode.realtime ? '实时模式' : '备份模式';
+            _showMessage('数据库连接成功！当前使用$actualModeText', true);
+
             // 延迟跳转到聊天页面
             Future.delayed(const Duration(seconds: 2), () {
               if (mounted) {
@@ -331,6 +338,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: [
                     // 主配置卡片
                     _buildConfigCard(context),
+                    const SizedBox(height: 24),
+                    
+                    // 数据库模式选择卡片
+                    _buildDatabaseModeCard(context),
                     const SizedBox(height: 24),
                     
                     // 缓存管理卡片
@@ -605,6 +616,214 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+
+  Widget _buildDatabaseModeCard(BuildContext context) {
+    const wechatGreen = Color(0xFF07C160);
+    
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.swap_horiz,
+                    color: Colors.blue,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '数据库模式',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '选择数据库读取方式',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+
+            // 备份模式选项
+            _buildModeOption(
+              context,
+              title: '备份模式',
+              subtitle: '读取已解密的数据库副本（推荐）',
+              icon: Icons.backup,
+              iconColor: wechatGreen,
+              value: 'backup',
+              isSelected: _databaseMode == 'backup',
+              onTap: () {
+                setState(() {
+                  _databaseMode = 'backup';
+                });
+              },
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // 实时模式选项
+            _buildModeOption(
+              context,
+              title: '实时模式',
+              subtitle: '直接读取微信加密数据库（实验性功能）',
+              icon: Icons.flash_on,
+              iconColor: Colors.orange,
+              value: 'realtime',
+              isSelected: _databaseMode == 'realtime',
+              onTap: () {
+                setState(() {
+                  _databaseMode = 'realtime';
+                });
+              },
+            ),
+
+            const SizedBox(height: 16),
+
+            // 提示信息
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _databaseMode == 'realtime' 
+                        ? '实时模式将直接读取微信原始数据库，无需解密备份'
+                        : '备份模式需要先解密数据库，更稳定可靠',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModeOption(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color iconColor,
+    required String value,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.outline.withOpacity(0.2),
+            width: isSelected ? 2 : 1,
+          ),
+          color: isSelected
+              ? Theme.of(context).colorScheme.primary.withOpacity(0.05)
+              : Colors.transparent,
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                icon,
+                color: iconColor,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: isSelected
+                          ? Theme.of(context).colorScheme.primary
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              Icon(
+                Icons.check_circle,
+                color: Theme.of(context).colorScheme.primary,
+                size: 24,
+              )
+            else
+              Icon(
+                Icons.radio_button_unchecked,
+                color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                size: 24,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildCacheManagementCard(BuildContext context) {
     const wechatGreen = Color(0xFF07C160);

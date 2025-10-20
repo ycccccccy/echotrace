@@ -7,7 +7,6 @@ class YearSelectorWidget extends StatefulWidget {
   final int? selectedYear; // null 表示"历史以来"（默认选中）
   final Function(int? year) onYearSelected;
   final VoidCallback onConfirm;
-  final VoidCallback? onDualReport; // 新增：双人报告按钮回调
 
   const YearSelectorWidget({
     super.key,
@@ -15,7 +14,6 @@ class YearSelectorWidget extends StatefulWidget {
     required this.selectedYear,
     required this.onYearSelected,
     required this.onConfirm,
-    this.onDualReport, // 可选参数
   });
 
   @override
@@ -116,30 +114,6 @@ class _YearSelectorWidgetState extends State<YearSelectorWidget> {
                 ),
               ] else
                 const Spacer(),
-              
-              // 双人报告按钮（如果提供了回调）
-              if (widget.onDualReport != null) ...[
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: OutlinedButton.icon(
-                    onPressed: widget.onDualReport,
-                    icon: const Icon(Icons.people),
-                    label: const Text(
-                      '生成双人报告',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: wechatGreen,
-                      side: const BorderSide(color: wechatGreen, width: 2),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
               
               // 确认按钮（默认启用，因为"历史以来"默认选中）
               SizedBox(
