@@ -111,6 +111,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
         final parentDirName = pathParts[pathParts.length - 2];
         if (parentDirName.startsWith('wxid_')) {
           wxidName = parentDirName;
+        }else{
+          wxidName="wxid_$parentDirName";
         }
       }
       
