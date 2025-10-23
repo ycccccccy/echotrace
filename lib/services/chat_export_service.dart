@@ -99,6 +99,10 @@ class ChatExportService {
   Future<bool> exportToExcel(ChatSession session, List<Message> messages, {String? filePath}) async {
     try {
       final excel = Excel.createExcel();
+      final defaultSheet = excel.getDefaultSheet();
+      if (defaultSheet != null) {
+        excel.rename(defaultSheet, '聊天记录');
+      }
       final sheet = excel['聊天记录'];
       
       // 设置表头
