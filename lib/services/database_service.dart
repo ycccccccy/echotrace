@@ -1410,8 +1410,11 @@ class DatabaseService {
 
             final beforeDateCount = datesSet.length;
             for (final dateRow in dateResult) {
-              final date = dateRow['date'] as String;
-              datesSet.add(date);
+              final dateValue = dateRow['date'];
+              if (dateValue != null) {
+                final date = dateValue as String;
+                datesSet.add(date);
+              }
             }
             final addedDates = datesSet.length - beforeDateCount;
             await logger.debug('DatabaseService', '  表 ${dbInfo.tableName}: 查询到 ${dateResult.length} 个日期，新增 $addedDates 个唯一日期（总计: ${datesSet.length}）');

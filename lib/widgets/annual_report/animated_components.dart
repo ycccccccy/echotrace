@@ -20,7 +20,7 @@ class AnimatedNumberDisplay extends StatelessWidget {
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: value),
       duration: duration,
-      curve: Curves.easeOutCubic,
+      curve: Curves.easeOutCubic, 
       builder: (context, value, child) {
         return Text(
           '${value.toInt()}$suffix',
@@ -65,7 +65,11 @@ class _FadeInTextState extends State<FadeInText>
   void initState() {
     super.initState();
     _controller = AnimationController(vsync: this, duration: widget.duration);
-    _animation = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
+    // 使用更柔和的缓动曲线
+    _animation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    );
 
     Future.delayed(widget.delay, () {
       if (mounted) {
@@ -127,8 +131,16 @@ class _SlideInCardState extends State<SlideInCard>
     _slideAnimation = Tween<Offset>(
       begin: widget.begin,
       end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
-    _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(_controller);
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic, // 使用更柔和的缓动曲线
+    ));
+    _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: Curves.easeOutCubic,
+      ),
+    );
 
     Future.delayed(widget.delay, () {
       if (mounted) {
@@ -257,5 +269,126 @@ class _ProgressRingPainter extends CustomPainter {
   bool shouldRepaint(_ProgressRingPainter oldDelegate) {
     return oldDelegate.progress != progress;
   }
+}
+
+/// 带淡入效果的富文本组件 - 用于显示数据融入文案的句子
+class FadeInRichText extends StatefulWidget {
+  final String text;
+  final TextStyle baseStyle;
+  final Map<String, TextStyle> highlights;
+  final Duration delay;
+  final Duration duration;
+  final TextAlign textAlign;
+
+  const FadeInRichText({
+    super.key,
+    required this.text,
+    required this.baseStyle,
+    required this.highlights,
+    this.delay = Duration.zero,
+    this.duration = const Duration(milliseconds: 800),
+    this.textAlign = TextAlign.center,
+  });
+
+  @override
+  State<FadeInRichText> createState() => _FadeInRichTextState();
+}
+
+class _FadeInRichTextState extends State<FadeInRichText>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: widget.duration);
+    _animation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    );
+
+    Future.delayed(widget.delay, () {
+      if (mounted) {
+        _controller.forward();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 构建富文本的 spans
+    List<InlineSpan> spans = [];
+    String remaining = widget.text;
+    
+    // 找到所有高亮部分
+    List<_HighlightMatch> matches = [];
+    for (var entry in widget.highlights.entries) {
+      int index = 0;
+      while ((index = remaining.indexOf(entry.key, index)) != -1) {
+        matches.add(_HighlightMatch(
+          start: index,
+          end: index + entry.key.length,
+          text: entry.key,
+          style: entry.value,
+        ));
+        index += entry.key.length;
+      }
+    }
+    
+    // 排序
+    matches.sort((a, b) => a.start.compareTo(b.start));
+    
+    // 构建 spans
+    int pos = 0;
+    for (var match in matches) {
+      if (pos < match.start) {
+        spans.add(TextSpan(
+          text: remaining.substring(pos, match.start),
+          style: widget.baseStyle,
+        ));
+      }
+      spans.add(TextSpan(
+        text: match.text,
+        style: match.style,
+      ));
+      pos = match.end;
+    }
+    
+    if (pos < remaining.length) {
+      spans.add(TextSpan(
+        text: remaining.substring(pos),
+        style: widget.baseStyle,
+      ));
+    }
+
+    return FadeTransition(
+      opacity: _animation,
+      child: RichText(
+        text: TextSpan(children: spans),
+        textAlign: widget.textAlign,
+      ),
+    );
+  }
+}
+
+class _HighlightMatch {
+  final int start;
+  final int end;
+  final String text;
+  final TextStyle style;
+
+  _HighlightMatch({
+    required this.start,
+    required this.end,
+    required this.text,
+    required this.style,
+  });
 }
 

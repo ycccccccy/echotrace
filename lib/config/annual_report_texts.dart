@@ -161,32 +161,29 @@ class AnnualReportTexts {
   // "2024-05-20
   //  这一天，你们聊了
   //  1234 条消息"
-  static const peakDayThisDay = '这一天，你们聊了';
-  static const peakDayMessagesUnit = ' 条消息';
+  static const peakDayThisDay = '这一天，你们说了';
+  static const peakDayMessagesUnit = ' 句话';
   
   // [显示效果] 最多聊天的好友
   // 完整显示：
   // "其中和 张三
   //  聊了 567 条"
   static const peakDayWithFriend = '其中和 ';
-  static const peakDayChatted = '聊了 ';
+  static const peakDayChatted = '高达 ';
   static const peakDayChattedUnit = ' 条';
 
   // 巅峰日评语（根据消息数动态生成）
   // [显示效果] 底部温馨评语，根据当天消息数显示不同内容
-  // 示例 count=1500 时显示：
-  // "那一天，一定发生了很重要的事吧
-  //  无论是开心还是难过
-  //  庆幸有人陪你一起度过"
+  // 示例 count=1500 时显示不同的情感故事
   static String getPeakDayComment(int count) {
     if (count > 1000) {
-      return '那一天，一定发生了很特别的故事吧\n无论心情是晴是雨\n庆幸的是，有人陪你一起度过';
+      return '那一天一定有什么特别的事发生\n让你们话多到停不下来\n也许是开心，也许是陪伴\n总之，那是值得记住的一天';
     } else if (count > 500) {
-      return '还记得那天，为什么聊了那么久吗？\n或许聊的早已不是事情本身\n而是有人愿意听你诉说的幸福';
+      return '有些话题就是聊不完\n关于彼此的一切\n都值得用那么多文字去诉说\n这就是珍惜的模样';
     } else if (count > 200) {
-      return '那应该是一个很特别的日子\n因为你们的对话，持续了很久很久';
+      return '那一天的你们，格外话多\n每一条消息都闪闪发光\n因为那是心意相通的表现';
     } else {
-      return '有些日子，分享欲就是会特别强烈\n而TA恰好有空，这就是最好的陪伴';
+      return '偶尔的热烈\n就足以温暖整个平凡的日子\n感谢有TA的陪伴';
     }
   }
 
@@ -207,6 +204,19 @@ class AnnualReportTexts {
   
   // [显示效果] 底部温馨寄语
   static const checkInClosing = '那段时间，TA的陪伴从未缺席\n那段时光，TA的陪伴温暖而绵长';
+
+  // ========== 聊天巅峰日页==========
+  // [显示效果] 第一句：日期单独显示
+  static const peakDayDateStandalone = '日期';
+  
+  // [显示效果] 第二句：消息总数
+  static const peakDayYouChatted = '你们说了 ';
+  static const peakDayMessagesCount = ' 句话';
+  
+  // [显示效果] 第三句：好友信息
+  static const peakDayWithFriendPrefix = '其中与 ';
+  static const peakDayWithFriendSuffix = ' 高达 ';
+  static const peakDayWithFriendMessagesUnit = ' 条';
 
   // ========== 生活节奏 ==========
   // [显示效果] 页面标题
@@ -232,6 +242,13 @@ class AnnualReportTexts {
   // [显示效果] 副标题
   static const midnightSubtitle = '有些话，只适合在夜里说';
   
+  // [显示效果] 深夜聊天描述
+  // 完整显示：
+  // "张三
+  //  聊了
+  //  123 条消息"
+
+  
   // [显示效果] 时间范围说明
   // 完整显示：
   // "在深夜 0:00 - 6:00
@@ -240,8 +257,9 @@ class AnnualReportTexts {
   //  123 条消息
   //  占你深夜消息的 45.6%"
   static const midnightTimeRange = '在深夜 0:00 - 6:00';
-  static const midnightChattedWith = '你和 ';
-  static const midnightMessagesUnit = '条消息';
+  static const midnightChattedWith = '你和';
+    static const midnightChattedPrefix = '说过';
+  static const midnightMessagesUnit = ' 句话';
   static const midnightPercentagePrefix = '占你深夜消息的 ';
   static const midnightPercentageSuffix = '%';
   
@@ -269,42 +287,36 @@ class AnnualReportTexts {
   static const responseClosing1 = 'TA总是第一时间给你回应\n这份在意，让人心安';
   static const responseClosing2 = '而对TA的消息，你也总会放下手边的一切\n这份关系，值得被用心回应';
 
-  // ========== 曾经的好朋友 ==========
-  // [显示效果] 页面标题（橙色）
-  static const formerFriendTitle = '曾经的好朋友';
+  // ========== 曾经的好朋友页 ==========
 
+  static const formerFriendTitle = '曾经的好朋友';
+  
   // [显示效果] 副标题
   static const formerFriendSubtitle = '这些年来，时间都带我遇见了谁，又留下了些什么?';
-
+  
   // [显示效果] 开场白前缀
   // 完整显示："还记得吗，那段时间"
-  static const formerFriendRemember = '还记得吗，那段时间';
+  static const formerFriendRemember = '还记得和';
 
-  // [显示效果] 中间连接词
-  // 完整显示："还记得吗，那段时间
-  //          张三
-  //          几乎每天都会出现在你的对话框里"
-  static const formerFriendAlmostDaily = '几乎每天都会出现在你的对话框里';
-
-  // [显示效果] 时间描述
-  // 完整显示："从 2023/8/24 到 2024/11/29"
-  static const formerFriendFromDate = '从 ';
+    // [显示效果] 那段时间里的天数
+  static const formerFriendInDaysPrefix = '那 ';
+  static const formerFriendInDaysSuffix = ' 天里，你们聊了 ';
+  static const formerFriendInDaysCount = ' 天';
+  
+  // [显示效果] 消息总数前缀
+  static const formerFriendTotalPrefix = '一共 ';
+  static const formerFriendTotalSuffix = ' 条消息';
+  
   static const formerFriendToDate = ' 到 ';
 
-  // [显示效果] 持续时间描述
-  // 完整显示："整整 464 天"
-  static const formerFriendWholeDays = '整整 ';
-  static const formerFriendDaysUnit = ' 天';
-
-  // [显示效果] 聊天频率描述
-  // 完整显示："你们聊了 273 天，发了 85640 条消息"
-  static const formerFriendChattedDays = '你们聊了 ';
-  static const formerFriendChattedDaysUnit = ' 天，发了 ';
-  static const formerFriendMessagesUnit = ' 条消息';
-
+  
   // [显示效果] 转折文案
+  // [显示效果] 没有联系的天数描述
+  // 完整显示："已经 123 天没有联系了"
   static const formerFriendButNow = '但现在';
-
+  static const formerFriendNoContactPrefix = '你们已经 ';
+  static const formerFriendNoContactSuffix = ' 天没有联系了';
+  
   // [显示效果] 后续情况描述
   // 完整显示："距离那段时光已经过去了 333 天
   //          你们只发了 81759 条消息
@@ -312,7 +324,7 @@ class AnnualReportTexts {
   static const formerFriendSinceThen = '距离那段时光已经过去了 ';
   static const formerFriendOnlySent = '你们只发了 ';
   static const formerFriendAvgPerDay = '平均每天 ';
-
+  
   // [显示效果] 底部温馨寄语
   static const formerFriendClosing = '时间悄无声息地将某些人带到你的生命里\n又将某些人轻轻推向远方';
 
