@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:convert';
-import 'package:excel/excel.dart';
+import 'dart:typed_data';
+import 'package:syncfusion_flutter_xlsio/xlsio.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:file_picker/file_picker.dart';
 import '../models/message.dart';
 import '../models/chat_session.dart';
@@ -113,60 +115,46 @@ class ChatExportService {
   
   /// 导出聊天记录为 Excel 格式
   Future<bool> exportToExcel(ChatSession session, List<Message> messages, {String? filePath}) async {
+    final Workbook workbook = Workbook();
     try {
       // 获取联系人详细信息
       final contactInfo = await _getContactInfo(session.username);
 
-      final excel = Excel.createExcel();
-      final defaultSheet = excel.getDefaultSheet();
-      if (defaultSheet != null) {
-        excel.rename(defaultSheet, '聊天记录');
+      // 使用或创建工作表
+      Worksheet sheet;
+      if (workbook.worksheets.count > 0) {
+        sheet = workbook.worksheets[0];
+        sheet.name = '聊天记录';
+      } else {
+        sheet = workbook.worksheets.addWithName('聊天记录');
       }
-      final sheet = excel['聊天记录'];
+      int currentRow = 1;
 
       // 添加会话信息行
-      sheet.appendRow([
-        TextCellValue('会话信息'),
-        TextCellValue(''),
-        TextCellValue(''),
-        TextCellValue(''),
-        TextCellValue(''),
-        TextCellValue(''),
-        TextCellValue(''),
-        TextCellValue(''),
-      ]);
-      sheet.appendRow([
-        TextCellValue('微信ID'),
-        TextCellValue(session.username),
-        TextCellValue('昵称'),
-        TextCellValue(contactInfo['nickname'] ?? ''),
-        TextCellValue('备注'),
-        TextCellValue(contactInfo['remark'] ?? ''),
-        TextCellValue(''),
-        TextCellValue(''),
-      ]);
-      sheet.appendRow([
-        TextCellValue(''),
-        TextCellValue(''),
-        TextCellValue(''),
-        TextCellValue(''),
-        TextCellValue(''),
-        TextCellValue(''),
-        TextCellValue(''),
-        TextCellValue(''),
-      ]);
+      sheet.getRangeByIndex(currentRow, 1).setText('会话信息');
+      currentRow++;
+
+      sheet.getRangeByIndex(currentRow, 1).setText('微信ID');
+      sheet.getRangeByIndex(currentRow, 2).setText(session.username);
+      sheet.getRangeByIndex(currentRow, 3).setText('昵称');
+      sheet.getRangeByIndex(currentRow, 4).setText(contactInfo['nickname'] ?? '');
+      sheet.getRangeByIndex(currentRow, 5).setText('备注');
+      sheet.getRangeByIndex(currentRow, 6).setText(contactInfo['remark'] ?? '');
+      currentRow++;
+
+      // 空行
+      currentRow++;
 
       // 设置表头
-      sheet.appendRow([
-        TextCellValue('序号'),
-        TextCellValue('时间'),
-        TextCellValue('发送者'),
-        TextCellValue('发送者微信ID'),
-        TextCellValue('发送者昵称'),
-        TextCellValue('发送者备注'),
-        TextCellValue('消息类型'),
-        TextCellValue('内容'),
-      ]);
+      sheet.getRangeByIndex(currentRow, 1).setText('序号');
+      sheet.getRangeByIndex(currentRow, 2).setText('时间');
+      sheet.getRangeByIndex(currentRow, 3).setText('发送者');
+      sheet.getRangeByIndex(currentRow, 4).setText('发送者微信ID');
+      sheet.getRangeByIndex(currentRow, 5).setText('发送者昵称');
+      sheet.getRangeByIndex(currentRow, 6).setText('发送者备注');
+      sheet.getRangeByIndex(currentRow, 7).setText('消息类型');
+      sheet.getRangeByIndex(currentRow, 8).setText('内容');
+      currentRow++;
 
       // 获取所有发送者的显示名称
       final senderUsernames = messages
@@ -185,6 +173,12 @@ class ChatExportService {
         senderContactInfos[username] = await _getContactInfo(username);
       }
 
+      // 获取当前账户的联系人信息（用于"我"发送的消息）
+      final currentAccountWxid = _databaseService.currentAccountWxid ?? '';
+      final currentAccountInfo = currentAccountWxid.isNotEmpty 
+          ? await _getContactInfo(currentAccountWxid)
+          : <String, String>{};
+
       // 添加数据行
       for (int i = 0; i < messages.length; i++) {
         final msg = messages[i];
@@ -197,9 +191,9 @@ class ChatExportService {
 
         if (msg.isSend == 1) {
           senderDisplayName = '我';
-          senderWxid = _databaseService.currentAccountWxid ?? '';
-          senderNickname = '';
-          senderRemark = '';
+          senderWxid = currentAccountWxid;
+          senderNickname = currentAccountInfo['nickname'] ?? '';
+          senderRemark = currentAccountInfo['remark'] ?? '';
         } else if (session.isGroup && msg.senderUsername != null) {
           senderDisplayName = senderDisplayNames[msg.senderUsername] ?? '群成员';
           senderWxid = msg.senderUsername ?? '';
@@ -213,27 +207,26 @@ class ChatExportService {
           senderRemark = contactInfo['remark'] ?? '';
         }
 
-        sheet.appendRow([
-          IntCellValue(i + 1),
-          TextCellValue(msg.formattedCreateTime),
-          TextCellValue(senderDisplayName),
-          TextCellValue(senderWxid),
-          TextCellValue(senderNickname),
-          TextCellValue(senderRemark),
-          TextCellValue(msg.typeDescription),
-          TextCellValue(msg.displayContent),
-        ]);
+        sheet.getRangeByIndex(currentRow, 1).setNumber(i + 1);
+        sheet.getRangeByIndex(currentRow, 2).setText(msg.formattedCreateTime);
+        sheet.getRangeByIndex(currentRow, 3).setText(senderDisplayName);
+        sheet.getRangeByIndex(currentRow, 4).setText(senderWxid);
+        sheet.getRangeByIndex(currentRow, 5).setText(senderNickname);
+        sheet.getRangeByIndex(currentRow, 6).setText(senderRemark);
+        sheet.getRangeByIndex(currentRow, 7).setText(msg.typeDescription);
+        sheet.getRangeByIndex(currentRow, 8).setText(msg.displayContent);
+        currentRow++;
       }
 
-      // 自动调整列宽
-      sheet.setColumnWidth(0, 8);   // 序号
-      sheet.setColumnWidth(1, 20);  // 时间
-      sheet.setColumnWidth(2, 15);  // 发送者
-      sheet.setColumnWidth(3, 25);  // 发送者微信ID
-      sheet.setColumnWidth(4, 15);  // 发送者昵称
-      sheet.setColumnWidth(5, 15);  // 发送者备注
-      sheet.setColumnWidth(6, 12);  // 消息类型
-      sheet.setColumnWidth(7, 50);  // 内容
+      // 自动调整列宽（Syncfusion 使用 1-based 索引）
+      sheet.getRangeByIndex(1, 1).columnWidth = 8;   // 序号
+      sheet.getRangeByIndex(1, 2).columnWidth = 20;  // 时间
+      sheet.getRangeByIndex(1, 3).columnWidth = 15;  // 发送者
+      sheet.getRangeByIndex(1, 4).columnWidth = 25;  // 发送者微信ID
+      sheet.getRangeByIndex(1, 5).columnWidth = 15;  // 发送者昵称
+      sheet.getRangeByIndex(1, 6).columnWidth = 15;  // 发送者备注
+      sheet.getRangeByIndex(1, 7).columnWidth = 12;  // 消息类型
+      sheet.getRangeByIndex(1, 8).columnWidth = 50;  // 内容
 
       if (filePath == null) {
         final suggestedName = '${session.displayName ?? session.username}_聊天记录_${DateTime.now().millisecondsSinceEpoch}.xlsx';
@@ -241,24 +234,27 @@ class ChatExportService {
           dialogTitle: '保存聊天记录',
           fileName: suggestedName,
         );
-        if (outputFile == null) return false;
+        if (outputFile == null) {
+          workbook.dispose();
+          return false;
+        }
         filePath = outputFile;
       }
 
-      final bytes = excel.encode();
-      if (bytes != null) {
-        final file = File(filePath);
-        // 确保父目录存在
-        final parentDir = file.parent;
-        if (!await parentDir.exists()) {
-          await parentDir.create(recursive: true);
-        }
-        await file.writeAsBytes(bytes);
-        return true;
+      // 保存工作簿为字节流
+      final List<int> bytes = workbook.saveAsStream();
+      workbook.dispose();
+      
+      final file = File(filePath);
+      // 确保父目录存在
+      final parentDir = file.parent;
+      if (!await parentDir.exists()) {
+        await parentDir.create(recursive: true);
       }
-
-      return false;
+      await file.writeAsBytes(Uint8List.fromList(bytes));
+      return true;
     } catch (e) {
+      workbook.dispose();
       return false;
     }
   }
@@ -1022,14 +1018,52 @@ class ChatExportService {
     final result = <String, String>{};
 
     try {
-      final contact = await _databaseService.getContact(username);
-      if (contact != null) {
-        result['nickname'] = contact.nickName;
-        result['remark'] = contact.remark;
-        result['alias'] = contact.alias;
+      // 获取 session.db 的路径
+      final sessionDbPath = _databaseService.dbPath;
+      if (sessionDbPath == null) {
+        return result;
+      }
+      
+      // 推导 contact.db 路径
+      final contactDbPath = sessionDbPath.replaceAll('session.db', 'contact.db');
+      final contactFile = File(contactDbPath);
+      
+      if (!await contactFile.exists()) {
+        return result;
+      }
+      
+      // 打开 contact.db 并查询
+      final contactDb = await databaseFactory.openDatabase(
+        contactDbPath,
+        options: OpenDatabaseOptions(readOnly: true, singleInstance: false),
+      );
+      
+      try {
+        final maps = await contactDb.query(
+          'contact',
+          columns: ['nick_name', 'remark'],
+          where: 'username = ?',
+          whereArgs: [username],
+          limit: 1,
+        );
+        
+        if (maps.isNotEmpty) {
+          final map = maps.first;
+          final nickName = (map['nick_name'] as String?)?.trim() ?? '';
+          final remark = (map['remark'] as String?)?.trim() ?? '';
+          
+          if (nickName.isNotEmpty) {
+            result['nickname'] = nickName;
+          }
+          if (remark.isNotEmpty) {
+            result['remark'] = remark;
+          }
+        }
+      } finally {
+        await contactDb.close();
       }
     } catch (e) {
-      // 获取失败时返回空map
+      // 查询失败时返回空map
     }
 
     return result;

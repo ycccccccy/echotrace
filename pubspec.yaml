@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.6+1
+version: 1.2.7+1
 
 environment:
   sdk: ^3.9.2
@@ -38,7 +38,7 @@ dependencies:
   # 数据库和加密相关
   sqflite_common_ffi: ^2.3.0
   crypto: ^3.0.3
-  pointycastle: ^3.9.1
+  pointycastle: ^4.0.0
   
   # 文件操作和路径
   file_picker: ^10.3.3
@@ -58,7 +58,7 @@ dependencies:
   xml: ^6.4.2
   
   # 压缩解压
-  archive: ^3.6.1
+  archive: 4.0.7
   cryptography: ^2.7.0
   zstd: ^0.0.1-dev.2
   
@@ -69,13 +69,13 @@ dependencies:
   ffi: ^2.1.0
   
   # Excel 导出
-  excel: ^4.0.6
+  syncfusion_flutter_xlsio: ^31.2.4
   
   # URL 启动
   url_launcher: ^6.3.0
   
   # 日期格式化
-  intl: ^0.19.0
+  intl: ^0.20.2
   
   # 包信息
   package_info_plus: ^9.0.0
@@ -92,7 +92,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

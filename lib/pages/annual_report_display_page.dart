@@ -18,8 +18,6 @@ import '../services/database_service.dart';
 import '../services/analytics_background_service.dart';
 import '../services/annual_report_cache_service.dart';
 import '../services/logger_service.dart';
-import '../widgets/annual_report/typography_system.dart';
-import '../widgets/annual_report/rich_text_builder.dart';
 
 /// 年度报告展示页面，支持翻页滑动查看各个分析模块
 class AnnualReportDisplayPage extends StatefulWidget {
