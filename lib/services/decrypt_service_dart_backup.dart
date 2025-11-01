@@ -51,7 +51,22 @@ class DecryptService {
   static const int keySize = 32;
   static const int reserveSize = 80;
   static final List<int> sqliteHeader = [
-    83, 81, 76, 105, 116, 101, 32, 102, 111, 114, 109, 97, 116, 32, 51, 0
+    83,
+    81,
+    76,
+    105,
+    116,
+    101,
+    32,
+    102,
+    111,
+    114,
+    109,
+    97,
+    116,
+    32,
+    51,
+    0,
   ]; // "SQLite format 3\x00" 的字节表示
 
   /// 初始化服务（兼容性方法）
@@ -89,14 +104,14 @@ class DecryptService {
   }
 
   /// 解密数据库文件（使用独立后台 Isolate）
-  /// 
+  ///
   /// [skipHmacValidation] 跳过除首页外的HMAC验证以提速（默认true，可提升30-50%速度）
-  /// 
+  ///
   /// 每个数据库文件在独立的Isolate中完整处理，解密完成后Isolate自动销毁
   /// **所有密钥派生和验证都在Isolate中完成，主线程不阻塞**
   Future<String> decryptDatabase(
-    String dbPath, 
-    String hexKey, 
+    String dbPath,
+    String hexKey,
     Function(int, int) progressCallback, {
     bool skipHmacValidation = true,
   }) async {
@@ -114,7 +129,8 @@ class DecryptService {
 
       // 生成输出路径
       final tempDir = await getTemporaryDirectory();
-      final outputPath = '${tempDir.path}${Platform.pathSeparator}decrypted_${DateTime.now().millisecondsSinceEpoch}.db';
+      final outputPath =
+          '${tempDir.path}${Platform.pathSeparator}decrypted_${DateTime.now().millisecondsSinceEpoch}.db';
 
       // 立即启动 Isolate（所有密钥派生和验证在Isolate中完成，主线程不阻塞）
       final receivePort = ReceivePort();
@@ -153,7 +169,7 @@ class DecryptService {
   }
 
   /// 独立 Isolate 解密入口函数
-  /// 
+  ///
   /// 这个函数在独立的Isolate中完整处理一个数据库文件：
   /// 1. 读取文件到内存
   /// 2. 计算派生密钥
@@ -184,7 +200,7 @@ class DecryptService {
         final start = pageNum * pageSize;
         final end = (start + pageSize < fileSize) ? start + pageSize : fileSize;
         var page = encryptedData.sublist(start, end);
-        
+
         // 补齐页面大小
         if (page.length < pageSize) {
           final paddedPage = Uint8List(pageSize);
@@ -201,10 +217,10 @@ class DecryptService {
           // 第一页总是验证HMAC（确保密钥正确），其他页面可选跳过
           final shouldValidate = (pageNum == 0) || !task.skipHmacValidation;
           final decryptedPage = _decryptPageStatic(
-            page, 
-            encKey, 
-            macKey, 
-            pageNum, 
+            page,
+            encKey,
+            macKey,
+            pageNum,
             !shouldValidate, // 转换为skipValidation参数
           );
           decryptedData.add(decryptedPage);
@@ -212,11 +228,13 @@ class DecryptService {
 
         // 每10页报告一次进度
         if (pageNum % 10 == 0 || pageNum == totalPages - 1) {
-          task.sendPort.send(_IsolateMessage(
-            type: 'progress',
-            current: pageNum + 1,
-            total: totalPages,
-          ));
+          task.sendPort.send(
+            _IsolateMessage(
+              type: 'progress',
+              current: pageNum + 1,
+              total: totalPages,
+            ),
+          );
         }
       }
 
@@ -224,23 +242,21 @@ class DecryptService {
       await File(task.outputPath).writeAsBytes(decryptedData.toBytes());
 
       // 发送完成消息（Isolate随后自动销毁）
-      task.sendPort.send(_IsolateMessage(
-        type: 'done',
-        result: task.outputPath,
-      ));
+      task.sendPort.send(
+        _IsolateMessage(type: 'done', result: task.outputPath),
+      );
     } catch (e) {
       // 发送错误消息
-      task.sendPort.send(_IsolateMessage(
-        type: 'error',
-        error: e.toString(),
-      ));
+      task.sendPort.send(_IsolateMessage(type: 'error', error: e.toString()));
     }
   }
 
-
-
   /// 验证页面HMAC（异步版本）
-  Future<bool> _validatePageHmac(List<int> page, List<int> macKey, int pageNum) async {
+  Future<bool> _validatePageHmac(
+    List<int> page,
+    List<int> macKey,
+    int pageNum,
+  ) async {
     final offset = pageNum == 0 ? saltSize : 0;
     final dataEnd = pageSize - reserveSize + ivSize;
 
@@ -255,17 +271,12 @@ class DecryptService {
 
     // 计算HMAC-SHA512
     final hmac = Hmac.sha512();
-    final mac = await hmac.calculateMac(
-      message,
-      secretKey: SecretKey(macKey),
-    );
+    final mac = await hmac.calculateMac(message, secretKey: SecretKey(macKey));
     final calculatedMac = Uint8List.fromList(mac.bytes);
     final storedMac = page.sublist(dataEnd, dataEnd + hmacSize);
 
     return _bytesEqual(calculatedMac, storedMac);
   }
-
-
 
   /// 派生加密密钥（PBKDF2）
   Future<List<int>> _deriveEncryptionKey(List<int> key, List<int> salt) async {
@@ -275,10 +286,7 @@ class DecryptService {
       bits: keySize * 8,
     );
     final secretKey = SecretKey(key);
-    final newKey = await pbkdf2.deriveKey(
-      secretKey: secretKey,
-      nonce: salt,
-    );
+    final newKey = await pbkdf2.deriveKey(secretKey: secretKey, nonce: salt);
     return await newKey.extractBytes();
   }
 
@@ -294,10 +302,7 @@ class DecryptService {
       bits: keySize * 8,
     );
     final secretKey = SecretKey(encKey);
-    final newKey = await pbkdf2.deriveKey(
-      secretKey: secretKey,
-      nonce: macSalt,
-    );
+    final newKey = await pbkdf2.deriveKey(secretKey: secretKey, nonce: macSalt);
     return await newKey.extractBytes();
   }
 
@@ -347,7 +352,6 @@ class DecryptService {
     return bytes;
   }
 
-
   /// 比较两个字节数组是否相等
   bool _bytesEqual(List<int> a, List<int> b) {
     if (a.length != b.length) return false;
@@ -360,22 +364,25 @@ class DecryptService {
   // ==================== 静态方法（供 Isolate 使用） ====================
 
   /// 派生加密密钥（静态版本）
-  static Future<List<int>> _deriveEncryptionKeyStatic(List<int> key, List<int> salt) async {
+  static Future<List<int>> _deriveEncryptionKeyStatic(
+    List<int> key,
+    List<int> salt,
+  ) async {
     final pbkdf2 = Pbkdf2(
       macAlgorithm: Hmac.sha512(),
       iterations: iterCount,
       bits: keySize * 8,
     );
     final secretKey = SecretKey(key);
-    final newKey = await pbkdf2.deriveKey(
-      secretKey: secretKey,
-      nonce: salt,
-    );
+    final newKey = await pbkdf2.deriveKey(secretKey: secretKey, nonce: salt);
     return await newKey.extractBytes();
   }
 
   /// 派生MAC密钥（静态版本）
-  static Future<List<int>> _deriveMacKeyStatic(List<int> encKey, List<int> salt) async {
+  static Future<List<int>> _deriveMacKeyStatic(
+    List<int> encKey,
+    List<int> salt,
+  ) async {
     final macSalt = Uint8List.fromList(salt.map((b) => b ^ 0x3a).toList());
     final pbkdf2 = Pbkdf2(
       macAlgorithm: Hmac.sha512(),
@@ -383,10 +390,7 @@ class DecryptService {
       bits: keySize * 8,
     );
     final secretKey = SecretKey(encKey);
-    final newKey = await pbkdf2.deriveKey(
-      secretKey: secretKey,
-      nonce: macSalt,
-    );
+    final newKey = await pbkdf2.deriveKey(secretKey: secretKey, nonce: macSalt);
     return await newKey.extractBytes();
   }
 
@@ -408,7 +412,10 @@ class DecryptService {
     }
 
     // 提取IV
-    final iv = page.sublist(pageSize - reserveSize, pageSize - reserveSize + ivSize);
+    final iv = page.sublist(
+      pageSize - reserveSize,
+      pageSize - reserveSize + ivSize,
+    );
 
     // AES-256-CBC 解密
     final encrypted = page.sublist(offset, pageSize - reserveSize);
@@ -420,7 +427,11 @@ class DecryptService {
   }
 
   /// 验证页面HMAC（静态版本）
-  static bool _validatePageHmacStatic(List<int> page, List<int> macKey, int pageNum) {
+  static bool _validatePageHmacStatic(
+    List<int> page,
+    List<int> macKey,
+    int pageNum,
+  ) {
     final offset = pageNum == 0 ? saltSize : 0;
     final dataEnd = pageSize - reserveSize + ivSize;
 
@@ -436,7 +447,7 @@ class DecryptService {
     // 使用 PointyCastle 计算 HMAC-SHA512
     final hmacDigest = HMac(SHA512Digest(), 128)
       ..init(KeyParameter(Uint8List.fromList(macKey)));
-    
+
     final calculatedMac = hmacDigest.process(Uint8List.fromList(message));
     final storedMac = page.sublist(dataEnd, dataEnd + hmacSize);
 
@@ -444,11 +455,15 @@ class DecryptService {
   }
 
   /// AES-256-CBC 解密（静态版本）
-  static List<int> _aesDecryptStatic(List<int> encrypted, List<int> key, List<int> iv) {
+  static List<int> _aesDecryptStatic(
+    List<int> encrypted,
+    List<int> key,
+    List<int> iv,
+  ) {
     final encryptedBytes = Uint8List.fromList(encrypted);
     final keyBytes = Uint8List.fromList(key);
     final ivBytes = Uint8List.fromList(iv);
-    
+
     final cipher = CBCBlockCipher(AESEngine())
       ..init(false, ParametersWithIV(KeyParameter(keyBytes), ivBytes));
 

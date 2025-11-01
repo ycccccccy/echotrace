@@ -6,10 +6,7 @@ import 'animated_chart.dart';
 class HeatmapChart extends StatelessWidget {
   final ActivityHeatmap heatmap;
 
-  const HeatmapChart({
-    super.key,
-    required this.heatmap,
-  });
+  const HeatmapChart({super.key, required this.heatmap});
 
   @override
   Widget build(BuildContext context) {
@@ -17,11 +14,11 @@ class HeatmapChart extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           // 动态计算单元格高度，确保能在一屏内显示
-          final availableHeight = constraints.maxHeight > 0 
-              ? constraints.maxHeight 
+          final availableHeight = constraints.maxHeight > 0
+              ? constraints.maxHeight
               : 600.0;
           final cellHeight = ((availableHeight - 100) / 24).clamp(8.0, 12.0);
-          
+
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -36,9 +33,9 @@ class HeatmapChart extends StatelessWidget {
                       child: Center(
                         child: Text(
                           weekdays[index],
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            fontSize: 11,
-                          ),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodySmall?.copyWith(fontSize: 11),
                         ),
                       ),
                     );
@@ -46,7 +43,7 @@ class HeatmapChart extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              
+
               // 热力图主体
               ...List.generate(24, (hour) {
                 return Padding(
@@ -58,24 +55,29 @@ class HeatmapChart extends StatelessWidget {
                         width: 30,
                         child: Text(
                           '${hour.toString().padLeft(2, '0')}:00',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            fontSize: 9,
-                          ),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.bodySmall?.copyWith(fontSize: 9),
                         ),
                       ),
                       const SizedBox(width: 5),
-                      
+
                       // 7天的色块
                       ...List.generate(7, (weekday) {
-                        final value = heatmap.getNormalizedValue(hour, weekday + 1);
+                        final value = heatmap.getNormalizedValue(
+                          hour,
+                          weekday + 1,
+                        );
                         final count = heatmap.getCount(hour, weekday + 1);
-                        
+
                         return Expanded(
                           child: Tooltip(
                             message: '$count 条消息',
                             child: Container(
                               height: cellHeight,
-                              margin: const EdgeInsets.symmetric(horizontal: 0.5),
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 0.5,
+                              ),
                               decoration: BoxDecoration(
                                 color: _getHeatColor(value),
                                 borderRadius: BorderRadius.circular(1),
@@ -88,18 +90,18 @@ class HeatmapChart extends StatelessWidget {
                   ),
                 );
               }),
-              
+
               const SizedBox(height: 12),
-              
+
               // 图例
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
                     '少',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontSize: 11,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(fontSize: 11),
                   ),
                   const SizedBox(width: 8),
                   ...List.generate(5, (index) {
@@ -116,9 +118,9 @@ class HeatmapChart extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text(
                     '多',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontSize: 11,
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(fontSize: 11),
                   ),
                 ],
               ),
@@ -131,10 +133,10 @@ class HeatmapChart extends StatelessWidget {
 
   Color _getHeatColor(double value) {
     if (value == 0) return Colors.grey[200]!;
-    
+
     // 使用微信绿色渐变
     const baseColor = Color(0xFF07C160);
-    
+
     if (value < 0.2) return baseColor.withOpacity(0.2);
     if (value < 0.4) return baseColor.withOpacity(0.4);
     if (value < 0.6) return baseColor.withOpacity(0.6);
@@ -142,4 +144,3 @@ class HeatmapChart extends StatelessWidget {
     return baseColor;
   }
 }
-

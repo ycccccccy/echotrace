@@ -82,10 +82,7 @@ class _ShimmerLoadingState extends State<ShimmerLoading>
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
       transitionBuilder: (child, animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: child,
-        );
+        return FadeTransition(opacity: animation, child: child);
       },
       child: widget.isLoading
           ? FadeTransition(
@@ -131,7 +128,11 @@ class _SlidingGradientTransform extends GradientTransform {
 
   @override
   Matrix4? transform(Rect bounds, {TextDirection? textDirection}) {
-    return Matrix4.translationValues(bounds.width * 2 * (slidePercent - 0.5), 0.0, 0.0);
+    return Matrix4.translationValues(
+      bounds.width * 2 * (slidePercent - 0.5),
+      0.0,
+      0.0,
+    );
   }
 }
 
@@ -315,25 +316,22 @@ class _AnimatedPageWrapperState extends State<AnimatedPageWrapper>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: widget.duration,
-    );
+    _controller = AnimationController(vsync: this, duration: widget.duration);
 
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: widget.curve),
-    );
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: widget.curve));
 
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 0.02),
       end: Offset.zero,
-    ).animate(
-      CurvedAnimation(parent: _controller, curve: widget.curve),
-    );
+    ).animate(CurvedAnimation(parent: _controller, curve: widget.curve));
 
-    _scaleAnimation = Tween<double>(begin: 0.98, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: widget.curve),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 0.98,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: widget.curve));
 
     _controller.forward();
   }
@@ -350,12 +348,8 @@ class _AnimatedPageWrapperState extends State<AnimatedPageWrapper>
       opacity: _fadeAnimation,
       child: SlideTransition(
         position: _slideAnimation,
-        child: ScaleTransition(
-          scale: _scaleAnimation,
-          child: widget.child,
-        ),
+        child: ScaleTransition(scale: _scaleAnimation, child: widget.child),
       ),
     );
   }
 }
-

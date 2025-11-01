@@ -16,7 +16,7 @@ class ChatSession {
   final int lastMsgSubType;
   final String lastMsgSender;
   final String lastSenderDisplayName;
-  
+
   // 可变的显示名称（用于从 contact 数据库获取的真实姓名）
   String? displayName;
 
@@ -64,21 +64,24 @@ class ChatSession {
   /// 清理字符串中的无效UTF-16字符
   static String _cleanString(dynamic value) {
     if (value == null) return '';
-    
+
     String str = value.toString();
     if (str.isEmpty) return str;
-    
+
     try {
       // 移除控制字符和无效字符
-      String cleaned = str.replaceAll(RegExp(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]'), '');
-      
+      String cleaned = str.replaceAll(
+        RegExp(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]'),
+        '',
+      );
+
       // 处理可能的孤立代理对（UTF-16编码问题）
       final codeUnits = cleaned.codeUnits;
       final validUnits = <int>[];
-      
+
       for (int i = 0; i < codeUnits.length; i++) {
         final unit = codeUnits[i];
-        
+
         // 检查高代理（0xD800-0xDBFF）
         if (unit >= 0xD800 && unit <= 0xDBFF) {
           // 高代理必须后跟低代理
@@ -95,21 +98,24 @@ class ChatSession {
           // 孤立的高代理，跳过
           continue;
         }
-        
+
         // 检查低代理（0xDC00-0xDFFF）
         if (unit >= 0xDC00 && unit <= 0xDFFF) {
           // 孤立的低代理，跳过
           continue;
         }
-        
+
         // 普通字符
         validUnits.add(unit);
       }
-      
+
       return String.fromCharCodes(validUnits);
     } catch (e) {
       // 如果清理失败，返回一个安全的替代字符串
-      return str.replaceAll(RegExp(r'[^\u0020-\u007E\u4E00-\u9FFF\u3000-\u303F]'), '');
+      return str.replaceAll(
+        RegExp(r'[^\u0020-\u007E\u4E00-\u9FFF\u3000-\u303F]'),
+        '',
+      );
     }
   }
 
@@ -122,7 +128,7 @@ class ChatSession {
     } else if (username.startsWith('wxid_') || username.contains('@')) {
       return '私聊';
     }
-    
+
     // Fallback到type字段
     switch (type) {
       case 0:

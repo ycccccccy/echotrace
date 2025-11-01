@@ -5,10 +5,7 @@ class ResponsiveTextSizes {
   final double screenHeight;
   final double screenWidth;
 
-  ResponsiveTextSizes({
-    required this.screenHeight,
-    required this.screenWidth,
-  });
+  ResponsiveTextSizes({required this.screenHeight, required this.screenWidth});
 
   /// 1. 页面主标题 - 最大且最突出
   /// 用于：页面大标题、年份显示等
@@ -191,7 +188,8 @@ class AnnualReportTypography {
   }
 
   /// 辅助方法：根据响应式尺寸获取对应的文字样式
-  static TextStyle getDynamicMainTitle(ResponsiveTextSizes sizes, {
+  static TextStyle getDynamicMainTitle(
+    ResponsiveTextSizes sizes, {
     Color color = const Color(0xFF333333),
     FontWeight fontWeight = FontWeight.bold,
   }) {
@@ -205,7 +203,8 @@ class AnnualReportTypography {
     );
   }
 
-  static TextStyle getDynamicSubTitle(ResponsiveTextSizes sizes, {
+  static TextStyle getDynamicSubTitle(
+    ResponsiveTextSizes sizes, {
     Color color = const Color(0xFF666666),
     FontWeight fontWeight = FontWeight.w600,
   }) {
@@ -219,7 +218,8 @@ class AnnualReportTypography {
     );
   }
 
-  static TextStyle getDynamicCardTitle(ResponsiveTextSizes sizes, {
+  static TextStyle getDynamicCardTitle(
+    ResponsiveTextSizes sizes, {
     Color color = const Color(0xFF333333),
     FontWeight fontWeight = FontWeight.w600,
   }) {
@@ -233,7 +233,8 @@ class AnnualReportTypography {
     );
   }
 
-  static TextStyle getDynamicLargeNumber(ResponsiveTextSizes sizes, {
+  static TextStyle getDynamicLargeNumber(
+    ResponsiveTextSizes sizes, {
     Color color = const Color(0xFF07C160),
     FontWeight fontWeight = FontWeight.bold,
   }) {
@@ -246,7 +247,8 @@ class AnnualReportTypography {
     );
   }
 
-  static TextStyle getDynamicMediumNumber(ResponsiveTextSizes sizes, {
+  static TextStyle getDynamicMediumNumber(
+    ResponsiveTextSizes sizes, {
     Color color = const Color(0xFF333333),
     FontWeight fontWeight = FontWeight.bold,
   }) {
@@ -259,7 +261,8 @@ class AnnualReportTypography {
     );
   }
 
-  static TextStyle getDynamicSmallNumber(ResponsiveTextSizes sizes, {
+  static TextStyle getDynamicSmallNumber(
+    ResponsiveTextSizes sizes, {
     Color color = const Color(0xFF333333),
     FontWeight fontWeight = FontWeight.w600,
   }) {
@@ -272,7 +275,8 @@ class AnnualReportTypography {
     );
   }
 
-  static TextStyle getDynamicBodyLarge(ResponsiveTextSizes sizes, {
+  static TextStyle getDynamicBodyLarge(
+    ResponsiveTextSizes sizes, {
     Color color = const Color(0xFF333333),
     FontWeight fontWeight = FontWeight.w500,
   }) {
@@ -285,7 +289,8 @@ class AnnualReportTypography {
     );
   }
 
-  static TextStyle getDynamicBody(ResponsiveTextSizes sizes, {
+  static TextStyle getDynamicBody(
+    ResponsiveTextSizes sizes, {
     Color color = const Color(0xFF666666),
     FontWeight fontWeight = FontWeight.normal,
   }) {
@@ -298,7 +303,8 @@ class AnnualReportTypography {
     );
   }
 
-  static TextStyle getDynamicBodySmall(ResponsiveTextSizes sizes, {
+  static TextStyle getDynamicBodySmall(
+    ResponsiveTextSizes sizes, {
     Color color = const Color(0xFF999999),
     FontWeight fontWeight = FontWeight.normal,
   }) {
@@ -311,7 +317,8 @@ class AnnualReportTypography {
     );
   }
 
-  static TextStyle getDynamicLabel(ResponsiveTextSizes sizes, {
+  static TextStyle getDynamicLabel(
+    ResponsiveTextSizes sizes, {
     Color color = const Color(0xFFBBBBBB),
     FontWeight fontWeight = FontWeight.normal,
   }) {

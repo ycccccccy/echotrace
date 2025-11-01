@@ -11,22 +11,28 @@ class AnnualReportCacheService {
   static Future<void> saveReport(int? year, Map<String, dynamic> data) async {
     final prefs = await SharedPreferences.getInstance();
     final key = year == null ? _allKey : '$_keyPrefix$year';
-    
+
     // 添加生成时间戳
     data['generatedAt'] = DateTime.now().toIso8601String();
     data['year'] = year;
-    
+
     // 保存报告数据
     await prefs.setString(key, jsonEncode(data));
-    
+
     // 更新已缓存年份列表
     final cachedYears = await getAllCachedYears();
     if (year != null && !cachedYears.contains(year)) {
       cachedYears.add(year);
-      await prefs.setStringList(_cachedYearsKey, cachedYears.map((y) => y.toString()).toList());
+      await prefs.setStringList(
+        _cachedYearsKey,
+        cachedYears.map((y) => y.toString()).toList(),
+      );
     } else if (year == null && !cachedYears.contains(-1)) {
       cachedYears.add(-1); // -1 表示"历史以来"
-      await prefs.setStringList(_cachedYearsKey, cachedYears.map((y) => y.toString()).toList());
+      await prefs.setStringList(
+        _cachedYearsKey,
+        cachedYears.map((y) => y.toString()).toList(),
+      );
     }
   }
 
@@ -34,10 +40,10 @@ class AnnualReportCacheService {
   static Future<Map<String, dynamic>?> loadReport(int? year) async {
     final prefs = await SharedPreferences.getInstance();
     final key = year == null ? _allKey : '$_keyPrefix$year';
-    
+
     final jsonStr = prefs.getString(key);
     if (jsonStr == null) return null;
-    
+
     try {
       return jsonDecode(jsonStr) as Map<String, dynamic>;
     } catch (e) {
@@ -57,12 +63,15 @@ class AnnualReportCacheService {
     final prefs = await SharedPreferences.getInstance();
     final key = year == null ? _allKey : '$_keyPrefix$year';
     await prefs.remove(key);
-    
+
     // 从已缓存年份列表中移除
     final cachedYears = await getAllCachedYears();
     final yearToRemove = year ?? -1;
     cachedYears.remove(yearToRemove);
-    await prefs.setStringList(_cachedYearsKey, cachedYears.map((y) => y.toString()).toList());
+    await prefs.setStringList(
+      _cachedYearsKey,
+      cachedYears.map((y) => y.toString()).toList(),
+    );
   }
 
   /// 获取所有已缓存的年份
@@ -76,12 +85,12 @@ class AnnualReportCacheService {
   static Future<void> clearAllReports() async {
     final prefs = await SharedPreferences.getInstance();
     final cachedYears = await getAllCachedYears();
-    
+
     for (final year in cachedYears) {
       final key = year == -1 ? _allKey : '$_keyPrefix$year';
       await prefs.remove(key);
     }
-    
+
     await prefs.remove(_cachedYearsKey);
   }
 
@@ -89,10 +98,10 @@ class AnnualReportCacheService {
   static Future<DateTime?> getReportGeneratedTime(int? year) async {
     final report = await loadReport(year);
     if (report == null) return null;
-    
+
     final timestamp = report['generatedAt'] as String?;
     if (timestamp == null) return null;
-    
+
     try {
       return DateTime.parse(timestamp);
     } catch (e) {
@@ -100,4 +109,3 @@ class AnnualReportCacheService {
     }
   }
 }
-

@@ -64,7 +64,7 @@ class _FloatingDotsPainter extends CustomPainter {
       final x = random.nextDouble() * size.width;
       final y = random.nextDouble() * size.height;
       final radius = minSize + random.nextDouble() * (maxSize - minSize);
-      
+
       canvas.drawCircle(Offset(x, y), radius, paint);
     }
   }
@@ -163,20 +163,22 @@ class WarmCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: backgroundColor ?? Colors.white,
         borderRadius: BorderRadius.circular(borderRadius),
-        boxShadow: shadows ?? [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 20,
-            spreadRadius: 0,
-            offset: const Offset(0, 4),
-          ),
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 10,
-            spreadRadius: 0,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        boxShadow:
+            shadows ??
+            [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 20,
+                spreadRadius: 0,
+                offset: const Offset(0, 4),
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 10,
+                spreadRadius: 0,
+                offset: const Offset(0, 2),
+              ),
+            ],
       ),
       child: child,
     );
@@ -215,4 +217,3 @@ class SoftLine extends StatelessWidget {
     );
   }
 }
-

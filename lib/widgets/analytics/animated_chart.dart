@@ -26,27 +26,17 @@ class _AnimatedChartState extends State<AnimatedChart>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      duration: widget.duration,
-      vsync: this,
-    );
+    _controller = AnimationController(duration: widget.duration, vsync: this);
 
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeOut,
-      ),
-    );
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
 
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 0.1),
       end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeOutCubic,
-      ),
-    );
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
     // 延迟后开始动画
     Future.delayed(widget.delay, () {
@@ -66,10 +56,7 @@ class _AnimatedChartState extends State<AnimatedChart>
   Widget build(BuildContext context) {
     return FadeTransition(
       opacity: _fadeAnimation,
-      child: SlideTransition(
-        position: _slideAnimation,
-        child: widget.child,
-      ),
+      child: SlideTransition(position: _slideAnimation, child: widget.child),
     );
   }
 }
@@ -95,7 +82,7 @@ class StaggeredAnimatedList extends StatelessWidget {
       children: children.asMap().entries.map((entry) {
         final index = entry.key;
         final child = entry.value;
-        
+
         return AnimatedChart(
           delay: staggerDelay * index,
           duration: itemDuration,
@@ -105,4 +92,3 @@ class StaggeredAnimatedList extends StatelessWidget {
     );
   }
 }
-

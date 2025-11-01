@@ -27,7 +27,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final _imageAesKeyController = TextEditingController();
   final _configService = ConfigService();
   late final DecryptService _decryptService;
-  
+
   bool _obscureKey = true;
   bool _obscureImageXorKey = true;
   bool _obscureImageAesKey = true;
@@ -101,7 +101,8 @@ class _SettingsPageState extends State<SettingsPage> {
       bool foundAccountDir = false;
       await for (final entity in dir.list()) {
         if (entity is Directory) {
-          final dbStoragePath = '${entity.path}${Platform.pathSeparator}db_storage';
+          final dbStoragePath =
+              '${entity.path}${Platform.pathSeparator}db_storage';
           if (await Directory(dbStoragePath).exists()) {
             foundAccountDir = true;
             break;
@@ -112,7 +113,7 @@ class _SettingsPageState extends State<SettingsPage> {
       setState(() {
         _showWxidInput = !foundAccountDir;
       });
-      
+
       if (!foundAccountDir) {
         _showMessage('未在该目录中找到账号目录，请手动输入wxid', false);
       }
@@ -145,12 +146,13 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _autoDetectDatabasePath() async {
     try {
       _showMessage('正在自动检测数据库目录...', true);
-      
+
       // 获取用户主目录
-      final homeDir = Platform.environment['USERPROFILE'] ?? 
-                      Platform.environment['HOME'] ?? 
-                      '';
-      
+      final homeDir =
+          Platform.environment['USERPROFILE'] ??
+          Platform.environment['HOME'] ??
+          '';
+
       if (homeDir.isEmpty) {
         _showMessage('无法获取用户主目录', false);
         return;
@@ -167,9 +169,10 @@ class _SettingsPageState extends State<SettingsPage> {
           // 检查是否包含账号目录（包含 db_storage 子文件夹）
           await for (final entity in dir.list()) {
             if (entity is Directory) {
-              final dbStoragePath = '${entity.path}${Platform.pathSeparator}db_storage';
+              final dbStoragePath =
+                  '${entity.path}${Platform.pathSeparator}db_storage';
               final dbStorageDir = Directory(dbStoragePath);
-              
+
               if (await dbStorageDir.exists()) {
                 // 找到了包含 db_storage 的目录
                 setState(() {
@@ -196,23 +199,20 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-
   /// 递归查找所有 .db 文件
   Future<List<File>> _findAllDbFiles(Directory dir) async {
     final List<File> dbFiles = [];
-    
+
     try {
       await for (final entity in dir.list(recursive: true)) {
         if (entity is File && entity.path.endsWith('.db')) {
           dbFiles.add(entity);
         }
       }
-    } catch (e) {
-    }
-    
+    } catch (e) {}
+
     return dbFiles;
   }
-
 
   Future<void> _testConnection() async {
     if (!_formKey.currentState!.validate()) {
@@ -239,7 +239,9 @@ class _SettingsPageState extends State<SettingsPage> {
       Directory? dbStorageDir;
       await for (final entity in rootDir.list()) {
         if (entity is Directory) {
-          final possibleDbStorage = Directory('${entity.path}${Platform.pathSeparator}db_storage');
+          final possibleDbStorage = Directory(
+            '${entity.path}${Platform.pathSeparator}db_storage',
+          );
           if (await possibleDbStorage.exists()) {
             dbStorageDir = possibleDbStorage;
             break;
@@ -248,13 +250,16 @@ class _SettingsPageState extends State<SettingsPage> {
       }
 
       if (dbStorageDir == null) {
-        _showMessage('未找到 db_storage 目录\n请确认选择了正确的微信数据库根目录（如 xwechat_files）', false);
+        _showMessage(
+          '未找到 db_storage 目录\n请确认选择了正确的微信数据库根目录（如 xwechat_files）',
+          false,
+        );
         return;
       }
 
       // 在 db_storage 目录中查找 .db 文件
       final dbFiles = await _findAllDbFiles(dbStorageDir);
-      
+
       if (dbFiles.isEmpty) {
         _showMessage('db_storage 目录中没有找到.db文件', false);
         return;
@@ -266,7 +271,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
       // 验证密钥
       final isValid = await _decryptService.validateKey(testFile.path, key);
-      
+
       if (isValid) {
         _showMessage('密钥验证成功！可以保存配置。', true);
       } else {
@@ -309,12 +314,12 @@ class _SettingsPageState extends State<SettingsPage> {
       await _configService.saveDecryptKey(key);
       await _configService.saveDatabasePath(path);
       await _configService.saveDatabaseMode(_databaseMode);
-      
+
       // 保存手动输入的wxid（如果有）
       if (wxid.isNotEmpty) {
         await _configService.saveManualWxid(wxid);
       }
-      
+
       // 保存图片解密密钥（可选）
       if (imageXorKey.isNotEmpty) {
         await _configService.saveImageXorKey(imageXorKey);
@@ -336,7 +341,9 @@ class _SettingsPageState extends State<SettingsPage> {
           if (mounted) {
             // 检查实际连接的模式
             final currentMode = context.read<AppState>().databaseService.mode;
-            final actualModeText = currentMode == DatabaseMode.realtime ? '实时模式' : '备份模式';
+            final actualModeText = currentMode == DatabaseMode.realtime
+                ? '实时模式'
+                : '备份模式';
             _showMessage('数据库连接成功！当前使用$actualModeText', true);
 
             // 延迟跳转到聊天页面
@@ -365,7 +372,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _showMessage(String message, bool success) {
     if (!mounted) return;
-    
+
     setState(() {
       _statusMessage = message;
       _isSuccess = success;
@@ -410,7 +417,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 OutlinedButton(
                   onPressed: _isLoading ? null : _testConnection,
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                   ),
                   child: const Text('测试连接'),
                 ),
@@ -419,14 +429,17 @@ class _SettingsPageState extends State<SettingsPage> {
                 ElevatedButton(
                   onPressed: _isLoading ? null : _saveConfig,
                   style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
                   ),
                   child: const Text('保存配置'),
                 ),
               ],
             ),
           ),
-          
+
           // 内容区域
           Expanded(
             child: SingleChildScrollView(
@@ -439,19 +452,19 @@ class _SettingsPageState extends State<SettingsPage> {
                     // 主配置卡片
                     _buildConfigCard(context),
                     const SizedBox(height: 24),
-                    
+
                     // 图片解密配置卡片
                     _buildImageDecryptCard(context),
                     const SizedBox(height: 24),
-                    
+
                     // 数据库模式选择卡片
                     _buildDatabaseModeCard(context),
                     const SizedBox(height: 24),
-                    
+
                     // 缓存管理卡片
                     _buildCacheManagementCard(context),
                     const SizedBox(height: 24),
-                    
+
                     // 日志管理卡片
                     _buildLogManagementCard(context),
                   ],
@@ -495,7 +508,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       Text(
                         '配置解密密钥和数据库路径',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.6),
                         ),
                       ),
                     ],
@@ -517,15 +532,24 @@ class _SettingsPageState extends State<SettingsPage> {
                   hintText: '例如: a1b2c3d4e5f6...',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.shade300, width: 1.5),
+                    borderSide: BorderSide(
+                      color: Colors.grey.shade300,
+                      width: 1.5,
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.shade300, width: 1.5),
+                    borderSide: BorderSide(
+                      color: Colors.grey.shade300,
+                      width: 1.5,
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2.0),
+                    borderSide: BorderSide(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 2.0,
+                    ),
                   ),
                 ),
                 validator: (value) {
@@ -557,15 +581,24 @@ class _SettingsPageState extends State<SettingsPage> {
                       hintText: '点击自动检测或手动选择xwechat_files目录',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.grey.shade300, width: 1.5),
+                        borderSide: BorderSide(
+                          color: Colors.grey.shade300,
+                          width: 1.5,
+                        ),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Colors.grey.shade300, width: 1.5),
+                        borderSide: BorderSide(
+                          color: Colors.grey.shade300,
+                          width: 1.5,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2.0),
+                        borderSide: BorderSide(
+                          color: Theme.of(context).colorScheme.primary,
+                          width: 2.0,
+                        ),
                       ),
                     ),
                     readOnly: true,
@@ -585,7 +618,10 @@ class _SettingsPageState extends State<SettingsPage> {
                           icon: const Icon(Icons.search),
                           label: const Text('自动检测'),
                           style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
                           ),
                         ),
                       ),
@@ -596,7 +632,10 @@ class _SettingsPageState extends State<SettingsPage> {
                           icon: const Icon(Icons.folder_open),
                           label: const Text('手动选择'),
                           style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
                           ),
                         ),
                       ),
@@ -605,7 +644,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
             ),
-            
+
             // 手动输入wxid区域（条件显示）
             if (_showWxidInput) ...[
               const SizedBox(height: 24),
@@ -620,15 +659,24 @@ class _SettingsPageState extends State<SettingsPage> {
                     prefixIcon: const Icon(Icons.person_outline),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey.shade300, width: 1.5),
+                      borderSide: BorderSide(
+                        color: Colors.grey.shade300,
+                        width: 1.5,
+                      ),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Colors.grey.shade300, width: 1.5),
+                      borderSide: BorderSide(
+                        color: Colors.grey.shade300,
+                        width: 1.5,
+                      ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2.0),
+                      borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 2.0,
+                      ),
                     ),
                   ),
                   validator: (value) {
@@ -640,7 +688,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
             ],
-            
+
             const SizedBox(height: 32),
 
             // 状态消息
@@ -672,14 +720,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   ],
                 ),
               ),
-
           ],
         ),
       ),
     );
   }
 
-  Widget _buildInputSection(BuildContext context, {
+  Widget _buildInputSection(
+    BuildContext context, {
     required String title,
     required String subtitle,
     required Widget child,
@@ -689,9 +737,9 @@ class _SettingsPageState extends State<SettingsPage> {
       children: [
         Text(
           title,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 4),
         Text(
@@ -705,7 +753,6 @@ class _SettingsPageState extends State<SettingsPage> {
       ],
     );
   }
-
 
   Widget _buildImageDecryptCard(BuildContext context) {
     return Card(
@@ -738,7 +785,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       Text(
                         '配置图片解密所需的XOR和AES密钥（可选）',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.6),
                         ),
                       ),
                     ],
@@ -760,15 +809,24 @@ class _SettingsPageState extends State<SettingsPage> {
                   hintText: '例如: 0x53 或 A3',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.shade300, width: 1.5),
+                    borderSide: BorderSide(
+                      color: Colors.grey.shade300,
+                      width: 1.5,
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.shade300, width: 1.5),
+                    borderSide: BorderSide(
+                      color: Colors.grey.shade300,
+                      width: 1.5,
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2.0),
+                    borderSide: BorderSide(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 2.0,
+                    ),
                   ),
                 ),
                 validator: (value) {
@@ -776,8 +834,8 @@ class _SettingsPageState extends State<SettingsPage> {
                     return null; // 可选字段
                   }
                   // 移除可能的0x前缀
-                  final cleanValue = value.toLowerCase().startsWith('0x') 
-                      ? value.substring(2) 
+                  final cleanValue = value.toLowerCase().startsWith('0x')
+                      ? value.substring(2)
                       : value;
                   if (cleanValue.length < 2) {
                     return 'XOR密钥至少需要2个十六进制字符';
@@ -803,15 +861,24 @@ class _SettingsPageState extends State<SettingsPage> {
                   hintText: '例如: b18052363165af7e...',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.shade300, width: 1.5),
+                    borderSide: BorderSide(
+                      color: Colors.grey.shade300,
+                      width: 1.5,
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.grey.shade300, width: 1.5),
+                    borderSide: BorderSide(
+                      color: Colors.grey.shade300,
+                      width: 1.5,
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Theme.of(context).colorScheme.primary, width: 2.0),
+                    borderSide: BorderSide(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 2.0,
+                    ),
                   ),
                 ),
                 validator: (value) {
@@ -835,7 +902,9 @@ class _SettingsPageState extends State<SettingsPage> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                color: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -847,18 +916,24 @@ class _SettingsPageState extends State<SettingsPage> {
                       children: [
                         Text(
                           '用于解密微信加密图片文件（.dat格式）',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withOpacity(0.6),
+                                fontWeight: FontWeight.w500,
+                              ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           '• XOR密钥：整数格式，如 0x52 或 52\n• AES密钥：十六进制字符串，如 b180578900456123',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-                            height: 1.5,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withOpacity(0.5),
+                                height: 1.5,
+                              ),
                         ),
                       ],
                     ),
@@ -873,7 +948,6 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildDatabaseModeCard(BuildContext context) {
-    
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -903,7 +977,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       Text(
                         '选择数据库读取方式',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.6),
                         ),
                       ),
                     ],
@@ -926,9 +1002,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 });
               },
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // 实时模式选项
             _buildModeOption(
               context,
@@ -949,18 +1025,22 @@ class _SettingsPageState extends State<SettingsPage> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                color: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(
-                      _databaseMode == 'realtime' 
-                        ? '实时模式将直接读取微信原始数据库，无需解密备份'
-                        : '备份模式需要先解密数据库，更稳定可靠',
+                      _databaseMode == 'realtime'
+                          ? '实时模式将直接读取微信原始数据库，无需解密备份'
+                          : '备份模式需要先解密数据库，更稳定可靠',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withOpacity(0.6),
                       ),
                     ),
                   ),
@@ -1018,7 +1098,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   Text(
                     subtitle,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(0.6),
                     ),
                   ),
                 ],
@@ -1031,7 +1113,6 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildCacheManagementCard(BuildContext context) {
-    
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -1061,7 +1142,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       Text(
                         '管理年度报告缓存数据',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.6),
                         ),
                       ),
                     ],
@@ -1095,49 +1178,44 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _showClearCacheDialog() async {
     final cachedYears = await AnnualReportCacheService.getAllCachedYears();
-    
+
     if (!mounted) return;
-    
+
     if (cachedYears.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('暂无缓存数据'),
-          backgroundColor: Colors.orange,
-        ),
+        const SnackBar(content: Text('暂无缓存数据'), backgroundColor: Colors.orange),
       );
       return;
     }
 
     // 计算缓存数量
     final cacheCount = cachedYears.length;
-    final yearsList = cachedYears.map((year) => year == -1 ? '历史以来' : '$year年').join('、');
+    final yearsList = cachedYears
+        .map((year) => year == -1 ? '历史以来' : '$year年')
+        .join('、');
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Row(
-          children: [
-            const Text('清除缓存'),
-          ],
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [const Text('清除缓存')]),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               '确定要清除所有年度报告缓存吗？',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                fontWeight: FontWeight.w500,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                color: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Column(
@@ -1148,7 +1226,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       Text(
                         '已缓存 $cacheCount 个报告',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.6),
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -1158,7 +1238,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   Text(
                     yearsList,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(0.5),
                     ),
                   ),
                 ],
@@ -1236,7 +1318,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       Text(
                         '查看和管理应用日志',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.6),
                         ),
                       ),
                     ],
@@ -1255,11 +1339,13 @@ class _SettingsPageState extends State<SettingsPage> {
               builder: (context, snapshot) {
                 final size = snapshot.data?[0] ?? '计算中...';
                 final lines = snapshot.data?[1] ?? '0';
-                
+
                 return Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -1270,16 +1356,18 @@ class _SettingsPageState extends State<SettingsPage> {
                           children: [
                             Text(
                               '日志大小',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                              ),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface.withOpacity(0.6),
+                                  ),
                             ),
                             const SizedBox(height: 4),
                             Text(
                               size,
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),
@@ -1287,7 +1375,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       Container(
                         width: 1,
                         height: 40,
-                        color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.outline.withOpacity(0.2),
                       ),
                       Expanded(
                         child: Column(
@@ -1297,9 +1387,12 @@ class _SettingsPageState extends State<SettingsPage> {
                               padding: const EdgeInsets.only(left: 16),
                               child: Text(
                                 '日志条数',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                                ),
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface.withOpacity(0.6),
+                                    ),
                               ),
                             ),
                             const SizedBox(height: 4),
@@ -1307,9 +1400,8 @@ class _SettingsPageState extends State<SettingsPage> {
                               padding: const EdgeInsets.only(left: 16),
                               child: Text(
                                 lines,
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                ),
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.bold),
                               ),
                             ),
                           ],
@@ -1327,11 +1419,18 @@ class _SettingsPageState extends State<SettingsPage> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: _debugMode
-                    ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
-                    : Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                    ? Theme.of(
+                        context,
+                      ).colorScheme.primaryContainer.withOpacity(0.3)
+                    : Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                 borderRadius: BorderRadius.circular(12),
                 border: _debugMode
-                    ? Border.all(color: Theme.of(context).colorScheme.primary, width: 1.5)
+                    ? Border.all(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 1.5,
+                      )
                     : null,
               ),
               child: Row(
@@ -1340,7 +1439,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     _debugMode ? Icons.bug_report : Icons.bug_report_outlined,
                     color: _debugMode
                         ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                        : Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.6),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1349,19 +1450,23 @@ class _SettingsPageState extends State<SettingsPage> {
                       children: [
                         Text(
                           '调试模式',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: _debugMode ? Theme.of(context).colorScheme.primary : null,
-                          ),
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: _debugMode
+                                    ? Theme.of(context).colorScheme.primary
+                                    : null,
+                              ),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          _debugMode
-                              ? '记录详细日志（包括数据分析和年度报告）'
-                              : '仅记录错误信息',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                          ),
+                          _debugMode ? '记录详细日志（包括数据分析和年度报告）' : '仅记录错误信息',
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withOpacity(0.6),
+                              ),
                         ),
                       ],
                     ),
@@ -1457,30 +1562,21 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _showLogContentDialog() async {
     final content = await logger.getLogContent();
-    
+
     if (!mounted) return;
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Row(
-          children: [
-            const Text('应用日志'),
-          ],
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [const Text('应用日志')]),
         content: SizedBox(
           width: double.maxFinite,
           height: 500,
           child: SingleChildScrollView(
             child: SelectableText(
               content,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 12,
-              ),
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
             ),
           ),
         ),
@@ -1498,23 +1594,17 @@ class _SettingsPageState extends State<SettingsPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Row(
-          children: [
-            const Text('清空日志'),
-          ],
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(children: [const Text('清空日志')]),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               '确定要清空所有日志吗？',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                fontWeight: FontWeight.w500,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 12),
             Text(

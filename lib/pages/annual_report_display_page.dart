@@ -31,7 +31,8 @@ class AnnualReportDisplayPage extends StatefulWidget {
   });
 
   @override
-  State<AnnualReportDisplayPage> createState() => _AnnualReportDisplayPageState();
+  State<AnnualReportDisplayPage> createState() =>
+      _AnnualReportDisplayPageState();
 }
 
 class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
@@ -39,12 +40,12 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
   int _currentPage = 0;
   List<Widget>? _pages;
   final GlobalKey _pageViewKey = GlobalKey();
-  
+
   // 导出相关
   bool _isExporting = false;
   String _nameHideMode = 'none'; // none, full, firstChar
   bool _exportAsSeparateImages = false; // false=合并, true=分开保存
-  
+
   // 报告生成相关
   AnalyticsBackgroundService? _backgroundService;
   Map<String, dynamic>? _reportData;
@@ -65,16 +66,15 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
     _pageController.dispose();
     super.dispose();
   }
-  
+
   Future<void> _initializeReport() async {
     final dbPath = widget.databaseService.dbPath;
-    
+
     // 每次初始化时都重新创建后台服务，确保使用最新的数据库路径
     if (dbPath != null) {
       _backgroundService = AnalyticsBackgroundService(dbPath);
-    } else {
-    }
-    
+    } else {}
+
     // 获取数据库修改时间
     if (dbPath != null) {
       try {
@@ -87,9 +87,12 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
         // 无法获取文件状态，继续执行
       }
     }
-    
+
     // 检查缓存
-    await logger.info('AnnualReportPage', '检查缓存: year=${widget.year}, dbModifiedTime=${_dbModifiedTime}');
+    await logger.info(
+      'AnnualReportPage',
+      '检查缓存: year=${widget.year}, dbModifiedTime=${_dbModifiedTime}',
+    );
     final hasCache = await AnnualReportCacheService.hasReport(widget.year);
 
     if (hasCache && _dbModifiedTime != null) {
@@ -98,8 +101,12 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
         await logger.info('AnnualReportPage', '找到缓存数据，检查时间戳');
         // 检查数据库是否有更新
         final cachedDbTime = cachedData['dbModifiedTime'] as int?;
-        await logger.info('AnnualReportPage', '缓存数据库时间: $cachedDbTime, 当前数据库时间: $_dbModifiedTime');
-        final dbChanged = cachedDbTime == null || cachedDbTime < _dbModifiedTime!;
+        await logger.info(
+          'AnnualReportPage',
+          '缓存数据库时间: $cachedDbTime, 当前数据库时间: $_dbModifiedTime',
+        );
+        final dbChanged =
+            cachedDbTime == null || cachedDbTime < _dbModifiedTime!;
 
         if (dbChanged) {
           // 数据库已更新，询问用户
@@ -151,11 +158,14 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
       }
     }
 
-    await logger.info('AnnualReportPage', '没有缓存或缓存无效，自动开始生成: hasCache=$hasCache, dbModifiedTime=${_dbModifiedTime}');
+    await logger.info(
+      'AnnualReportPage',
+      '没有缓存或缓存无效，自动开始生成: hasCache=$hasCache, dbModifiedTime=${_dbModifiedTime}',
+    );
     // 自动生成缓存
     await _startGenerateReport();
   }
-  
+
   Future<bool?> _showDatabaseChangedDialog() async {
     return showDialog<bool>(
       context: context,
@@ -186,7 +196,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
       ),
     );
   }
-  
+
   Future<void> _startGenerateReport() async {
     await logger.debug('AnnualReportPage', '========== 开始生成年度报告 ==========');
     await logger.info('AnnualReportPage', '_startGenerateReport 被调用');
@@ -200,13 +210,13 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
     if (_backgroundService == null) {
       await logger.error('AnnualReportPage', '背景服务未初始化');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('服务未初始化，请检查数据库配置')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('服务未初始化，请检查数据库配置')));
       }
       return;
     }
-    
+
     await logger.debug('AnnualReportPage', '设置生成状态为 true');
     setState(() {
       _isGenerating = true;
@@ -216,12 +226,18 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
     });
 
     try {
-      await logger.debug('AnnualReportPage', '开始调用 generateFullAnnualReport，年份: ${widget.year}');
+      await logger.debug(
+        'AnnualReportPage',
+        '开始调用 generateFullAnnualReport，年份: ${widget.year}',
+      );
       final startTime = DateTime.now();
       final data = await _backgroundService!.generateFullAnnualReport(
         widget.year,
         (taskName, status, progress) async {
-          await logger.debug('AnnualReportPage', '进度更新: $taskName - $status - $progress%');
+          await logger.debug(
+            'AnnualReportPage',
+            '进度更新: $taskName - $status - $progress%',
+          );
           if (mounted) {
             setState(() {
               _currentTaskName = taskName;
@@ -233,7 +249,10 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
       );
 
       final elapsed = DateTime.now().difference(startTime);
-      await logger.info('AnnualReportPage', 'generateFullAnnualReport 完成，耗时: ${elapsed.inSeconds}秒');
+      await logger.info(
+        'AnnualReportPage',
+        'generateFullAnnualReport 完成，耗时: ${elapsed.inSeconds}秒',
+      );
       await logger.debug('AnnualReportPage', '报告数据包含 ${data.keys.length} 个字段');
 
       // 保存数据库修改时间
@@ -262,11 +281,14 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
           }
         });
         await logger.debug('AnnualReportPage', '页面构建完成');
-        await logger.debug('AnnualReportPage', '========== 年度报告生成完成 ==========');
+        await logger.debug(
+          'AnnualReportPage',
+          '========== 年度报告生成完成 ==========',
+        );
       }
     } catch (e, stackTrace) {
       await logger.error('AnnualReportPage', '生成报告失败: $e\n堆栈: $stackTrace');
-      
+
       if (mounted) {
         setState(() {
           _isGenerating = false;
@@ -274,7 +296,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
           _currentTaskStatus = '';
           _totalProgress = 0;
         });
-        
+
         // 显示详细的错误信息
         String errorMsg = '生成报告失败';
         if (e.toString().contains('TimeoutException')) {
@@ -282,7 +304,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
         } else if (e.toString().contains('database')) {
           errorMsg = '数据库访问失败，请检查数据库连接';
         }
-        
+
         await logger.error('AnnualReportPage', '显示错误消息: $errorMsg');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -301,15 +323,24 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
   void _buildPages() {
     try {
       logger.debug('AnnualReportPage', '开始构建页面列表');
-      logger.debug('AnnualReportPage', '_reportData 包含的键: ${_reportData?.keys.toList()}');
+      logger.debug(
+        'AnnualReportPage',
+        '_reportData 包含的键: ${_reportData?.keys.toList()}',
+      );
 
       // 检查关键数据
       if (_reportData != null) {
         final whoRepliesFastest = _reportData!['whoRepliesFastest'];
         final myFastestReplies = _reportData!['myFastestReplies'];
         logger.debug('AnnualReportPage', '构建页面前数据检查:');
-        logger.debug('AnnualReportPage', '  whoRepliesFastest: ${whoRepliesFastest == null ? "null" : (whoRepliesFastest is List ? "List(${whoRepliesFastest.length})" : whoRepliesFastest.runtimeType)}');
-        logger.debug('AnnualReportPage', '  myFastestReplies: ${myFastestReplies == null ? "null" : (myFastestReplies is List ? "List(${myFastestReplies.length})" : myFastestReplies.runtimeType)}');
+        logger.debug(
+          'AnnualReportPage',
+          '  whoRepliesFastest: ${whoRepliesFastest == null ? "null" : (whoRepliesFastest is List ? "List(${whoRepliesFastest.length})" : whoRepliesFastest.runtimeType)}',
+        );
+        logger.debug(
+          'AnnualReportPage',
+          '  myFastestReplies: ${myFastestReplies == null ? "null" : (myFastestReplies is List ? "List(${myFastestReplies.length})" : myFastestReplies.runtimeType)}',
+        );
       }
 
       _pages = [
@@ -337,7 +368,10 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
   @override
   Widget build(BuildContext context) {
     try {
-      logger.debug('AnnualReportPage', 'build方法被调用: _reportData=${_reportData != null}, _isGenerating=$_isGenerating, _pages=${_pages != null ? _pages!.length : 'null'}');
+      logger.debug(
+        'AnnualReportPage',
+        'build方法被调用: _reportData=${_reportData != null}, _isGenerating=$_isGenerating, _pages=${_pages != null ? _pages!.length : 'null'}',
+      );
 
       // 如果没有报告数据且不在生成中，显示初始界面
       if (_reportData == null && !_isGenerating) {
@@ -356,25 +390,179 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
         // 页面正在构建中，显示加载状态
         logger.warning('AnnualReportPage', '报告数据存在但页面列表为null');
         return Theme(
+          data: ThemeData(
+            fontFamily: 'HarmonyOS Sans SC',
+            textTheme: const TextTheme().apply(fontFamily: 'HarmonyOS Sans SC'),
+          ),
+          child: Scaffold(
+            backgroundColor: Colors.white,
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Color(0xFF07C160),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '正在构建报告页面...',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontFamily: 'HarmonyOS Sans SC',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+
+      logger.info('AnnualReportPage', '显示年度报告，页面数量: ${_pages!.length}');
+      return Theme(
         data: ThemeData(
           fontFamily: 'HarmonyOS Sans SC',
           textTheme: const TextTheme().apply(fontFamily: 'HarmonyOS Sans SC'),
         ),
         child: Scaffold(
           backgroundColor: Colors.white,
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+          body: RawKeyboardListener(
+            focusNode: FocusNode()..requestFocus(),
+            autofocus: true,
+            onKey: (event) {
+              if (event is RawKeyDownEvent) {
+                if (event.logicalKey.keyLabel == 'Arrow Right' ||
+                    event.logicalKey.keyLabel == 'Arrow Down' ||
+                    event.logicalKey.keyLabel == 'Page Down') {
+                  // 下一页
+                  if (_currentPage < _pages!.length - 1) {
+                    _pageController.nextPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  }
+                } else if (event.logicalKey.keyLabel == 'Arrow Left' ||
+                    event.logicalKey.keyLabel == 'Arrow Up' ||
+                    event.logicalKey.keyLabel == 'Page Up') {
+                  // 上一页
+                  if (_currentPage > 0) {
+                    _pageController.previousPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                    );
+                  }
+                }
+              }
+            },
+            child: Stack(
               children: [
-                const CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF07C160)),
+                // 主内容区域，支持鼠标滚轮翻页
+                RepaintBoundary(
+                  key: _pageViewKey,
+                  child: Listener(
+                    onPointerSignal: (pointerSignal) {
+                      if (pointerSignal is PointerScrollEvent) {
+                        if (pointerSignal.scrollDelta.dy > 0) {
+                          // 向下滚动 - 下一页
+                          if (_currentPage < _pages!.length - 1) {
+                            _pageController.nextPage(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOut,
+                            );
+                          }
+                        } else if (pointerSignal.scrollDelta.dy < 0) {
+                          // 向上滚动 - 上一页
+                          if (_currentPage > 0) {
+                            _pageController.previousPage(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOut,
+                            );
+                          }
+                        }
+                      }
+                    },
+                    child: PageView(
+                      controller: _pageController,
+                      onPageChanged: (index) {
+                        setState(() => _currentPage = index);
+                      },
+                      children: _pages!.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final page = entry.value;
+                        return ElegantPageTransition(
+                          pageIndex: index,
+                          currentPage: _currentPage,
+                          pageController: _pageController,
+                          transitionDuration: const Duration(milliseconds: 550),
+                          child: page,
+                        );
+                      }).toList(),
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  '正在构建报告页面...',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontFamily: 'HarmonyOS Sans SC',
+
+                // 页面指示器
+                Positioned(
+                  bottom: 40,
+                  left: 0,
+                  right: 0,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(_pages!.length, (index) {
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 400),
+                        curve: Curves.easeOutCubic,
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        width: _currentPage == index ? 24 : 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: _currentPage == index
+                              ? WarmTheme.primaryGreen
+                              : Colors.grey[300]!.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(4),
+                          boxShadow: _currentPage == index
+                              ? WarmTheme.getSoftShadow(
+                                  color: WarmTheme.primaryGreen,
+                                  blurRadius: 8,
+                                )
+                              : null,
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+
+                // 右上角按钮组
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 16,
+                  right: 16,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 分享按钮
+                      IconButton(
+                        icon: const Icon(
+                          Icons.share,
+                          color: Colors.black87,
+                          size: 24,
+                        ),
+                        onPressed: _isExporting ? null : _showExportDialog,
+                        tooltip: '分享',
+                      ),
+                      const SizedBox(width: 8),
+                      // 关闭按钮
+                      IconButton(
+                        icon: const Icon(
+                          Icons.close,
+                          color: Colors.black87,
+                          size: 28,
+                        ),
+                        onPressed: () => Navigator.of(context).pop(),
+                        tooltip: '关闭',
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -382,150 +570,6 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
           ),
         ),
       );
-    }
-
-    logger.info('AnnualReportPage', '显示年度报告，页面数量: ${_pages!.length}');
-    return Theme(
-      data: ThemeData(
-        fontFamily: 'HarmonyOS Sans SC',
-        textTheme: const TextTheme().apply(fontFamily: 'HarmonyOS Sans SC'),
-      ),
-      child: Scaffold(
-        backgroundColor: Colors.white,
-        body: RawKeyboardListener(
-        focusNode: FocusNode()..requestFocus(),
-        autofocus: true,
-        onKey: (event) {
-          if (event is RawKeyDownEvent) {
-            if (event.logicalKey.keyLabel == 'Arrow Right' ||
-                event.logicalKey.keyLabel == 'Arrow Down' ||
-                event.logicalKey.keyLabel == 'Page Down') {
-              // 下一页
-              if (_currentPage < _pages!.length - 1) {
-                _pageController.nextPage(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                );
-              }
-            } else if (event.logicalKey.keyLabel == 'Arrow Left' ||
-                       event.logicalKey.keyLabel == 'Arrow Up' ||
-                       event.logicalKey.keyLabel == 'Page Up') {
-              // 上一页
-              if (_currentPage > 0) {
-                _pageController.previousPage(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeInOut,
-                );
-              }
-            }
-          }
-        },
-        child: Stack(
-          children: [
-            // 主内容区域，支持鼠标滚轮翻页
-            RepaintBoundary(
-              key: _pageViewKey,
-              child: Listener(
-                onPointerSignal: (pointerSignal) {
-                if (pointerSignal is PointerScrollEvent) {
-                  if (pointerSignal.scrollDelta.dy > 0) {
-                    // 向下滚动 - 下一页
-                    if (_currentPage < _pages!.length - 1) {
-                      _pageController.nextPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                      );
-                    }
-                  } else if (pointerSignal.scrollDelta.dy < 0) {
-                    // 向上滚动 - 上一页
-                    if (_currentPage > 0) {
-                      _pageController.previousPage(
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeInOut,
-                      );
-                    }
-                  }
-                }
-              },
-                child: PageView(
-                  controller: _pageController,
-                  onPageChanged: (index) {
-                    setState(() => _currentPage = index);
-                  },
-                  children: _pages!.asMap().entries.map((entry) {
-                    final index = entry.key;
-                    final page = entry.value;
-                    return ElegantPageTransition(
-                      pageIndex: index,
-                      currentPage: _currentPage,
-                      pageController: _pageController,
-                      transitionDuration: const Duration(milliseconds: 550),
-                      child: page,
-                    );
-                  }).toList(),
-                ),
-              ),
-            ),
-          
-          // 页面指示器
-          Positioned(
-            bottom: 40,
-            left: 0,
-            right: 0,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(_pages!.length, (index) {
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 400),
-                  curve: Curves.easeOutCubic,
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: _currentPage == index ? 24 : 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: _currentPage == index
-                        ? WarmTheme.primaryGreen
-                        : Colors.grey[300]!.withOpacity(0.4),
-                    borderRadius: BorderRadius.circular(4),
-                    boxShadow: _currentPage == index
-                        ? WarmTheme.getSoftShadow(
-                            color: WarmTheme.primaryGreen,
-                            blurRadius: 8,
-                          )
-                        : null,
-                  ),
-                );
-              }),
-            ),
-          ),
-          
-          // 右上角按钮组
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 16,
-            right: 16,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 分享按钮
-                IconButton(
-                  icon: const Icon(Icons.share, color: Colors.black87, size: 24),
-                  onPressed: _isExporting ? null : _showExportDialog,
-                  tooltip: '分享',
-                ),
-                const SizedBox(width: 8),
-                // 关闭按钮
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.black87, size: 28),
-                  onPressed: () => Navigator.of(context).pop(),
-                  tooltip: '关闭',
-                ),
-              ],
-            ),
-          ),
-        ],
-        ),
-      ),
-      ),
-    );
     } catch (e, stackTrace) {
       logger.error('AnnualReportPage', 'build方法执行失败', e, stackTrace);
       // 发生异常时，显示错误界面
@@ -540,11 +584,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
-                  Icons.error_outline,
-                  size: 64,
-                  color: Colors.red,
-                ),
+                const Icon(Icons.error_outline, size: 64, color: Colors.red),
                 const SizedBox(height: 16),
                 Text(
                   '报告显示出错',
@@ -589,209 +629,214 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
 
   Widget _buildInitialScreen() {
     final yearText = widget.year != null ? '${widget.year}年' : '历史以来';
-    
+
     return Theme(
       data: ThemeData(
         fontFamily: 'HarmonyOS Sans SC',
         textTheme: const TextTheme().apply(fontFamily: 'HarmonyOS Sans SC'),
       ),
       child: Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: Text(
-          '$yearText年度报告',
-          style: const TextStyle(
-            fontFamily: 'HarmonyOS Sans SC',
-          ),
-        ),
         backgroundColor: Colors.white,
-        elevation: 0,
-        foregroundColor: Colors.black87,
-      ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.analytics_outlined,
-              size: 80,
-              color: Color(0xFF07C160),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              '$yearText年度报告',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-                fontFamily: 'HarmonyOS Sans SC',
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '点击下方按钮开始分析',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[600],
-                fontFamily: 'HarmonyOS Sans SC',
-              ),
-            ),
-            const SizedBox(height: 48),
-            ElevatedButton.icon(
-              onPressed: _startGenerateReport,
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('开始生成报告'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF07C160),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
-                textStyle: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'HarmonyOS Sans SC',
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      ),
-    );
-  }
-  
-  Widget _buildGeneratingScreen() {
-    final yearText = widget.year != null ? '${widget.year}年' : '历史以来';
-    
-    return Theme(
-      data: ThemeData(
-        fontFamily: 'HarmonyOS Sans SC',
-        textTheme: const TextTheme().apply(fontFamily: 'HarmonyOS Sans SC'),
-      ),
-      child: Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: Text(
-          '生成$yearText年度报告',
-          style: const TextStyle(
-            fontFamily: 'HarmonyOS Sans SC',
+        appBar: AppBar(
+          title: Text(
+            '$yearText年度报告',
+            style: const TextStyle(fontFamily: 'HarmonyOS Sans SC'),
           ),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          foregroundColor: Colors.black87,
         ),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        foregroundColor: Colors.black87,
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
+        body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              SizedBox(
-                width: 200,
-                height: 200,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    SizedBox(
-                      width: 200,
-                      height: 200,
-                      child: TweenAnimationBuilder<double>(
-                        duration: const Duration(milliseconds: 600),
-                        curve: Curves.easeInOut,
-                        tween: Tween<double>(
-                          begin: 0,
-                          end: _totalProgress / 100,
-                        ),
-                        builder: (context, value, child) {
-                          return CircularProgressIndicator(
-                            value: value,
-                            strokeWidth: 12,
-                            backgroundColor: Colors.grey[200],
-                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF07C160)),
-                          );
-                        },
-                      ),
-                    ),
-                    TweenAnimationBuilder<double>(
-                      duration: const Duration(milliseconds: 600),
-                      curve: Curves.easeInOut,
-                      tween: Tween<double>(
-                        begin: 0,
-                        end: _totalProgress.toDouble(),
-                      ),
-                      builder: (context, value, child) {
-                        return Text(
-                          '${value.toInt()}%',
-                          style: const TextStyle(
-                            fontSize: 48,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF07C160),
-                            fontFamily: 'HarmonyOS Sans SC',
-                          ),
-                        );
-                      },
-                    ),
-                  ],
+              const Icon(
+                Icons.analytics_outlined,
+                size: 80,
+                color: Color(0xFF07C160),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                '$yearText年度报告',
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                  fontFamily: 'HarmonyOS Sans SC',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '点击下方按钮开始分析',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey[600],
+                  fontFamily: 'HarmonyOS Sans SC',
                 ),
               ),
               const SizedBox(height: 48),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 400),
-                transitionBuilder: (Widget child, Animation<double> animation) {
-                  return FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0.0, 0.3),
-                        end: Offset.zero,
-                      ).animate(CurvedAnimation(
-                        parent: animation,
-                        curve: Curves.easeOutCubic,
-                      )),
-                      child: child,
-                    ),
-                  );
-                },
-                child: _currentTaskName.isNotEmpty
-                    ? Column(
-                        key: ValueKey<String>('$_currentTaskName-$_currentTaskStatus'),
-                        children: [
-                          Text(
-                            _currentTaskName,
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.black87,
-                              fontFamily: 'HarmonyOS Sans SC',
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 16),
-                          AnimatedDefaultTextStyle(
-                            duration: const Duration(milliseconds: 300),
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: _currentTaskStatus == '已完成' 
-                                  ? const Color(0xFF07C160)
-                                  : Colors.grey[600],
-                              fontFamily: 'HarmonyOS Sans SC',
-                            ),
-                            child: Text(
-                              _currentTaskStatus,
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ],
-                      )
-                    : const SizedBox.shrink(
-                        key: ValueKey<String>('empty'),
-                      ),
+              ElevatedButton.icon(
+                onPressed: _startGenerateReport,
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('开始生成报告'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF07C160),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 48,
+                    vertical: 16,
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'HarmonyOS Sans SC',
+                  ),
+                ),
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildGeneratingScreen() {
+    final yearText = widget.year != null ? '${widget.year}年' : '历史以来';
+
+    return Theme(
+      data: ThemeData(
+        fontFamily: 'HarmonyOS Sans SC',
+        textTheme: const TextTheme().apply(fontFamily: 'HarmonyOS Sans SC'),
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: Text(
+            '生成$yearText年度报告',
+            style: const TextStyle(fontFamily: 'HarmonyOS Sans SC'),
+          ),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          foregroundColor: Colors.black87,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 200,
+                  height: 200,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        width: 200,
+                        height: 200,
+                        child: TweenAnimationBuilder<double>(
+                          duration: const Duration(milliseconds: 600),
+                          curve: Curves.easeInOut,
+                          tween: Tween<double>(
+                            begin: 0,
+                            end: _totalProgress / 100,
+                          ),
+                          builder: (context, value, child) {
+                            return CircularProgressIndicator(
+                              value: value,
+                              strokeWidth: 12,
+                              backgroundColor: Colors.grey[200],
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                Color(0xFF07C160),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      TweenAnimationBuilder<double>(
+                        duration: const Duration(milliseconds: 600),
+                        curve: Curves.easeInOut,
+                        tween: Tween<double>(
+                          begin: 0,
+                          end: _totalProgress.toDouble(),
+                        ),
+                        builder: (context, value, child) {
+                          return Text(
+                            '${value.toInt()}%',
+                            style: const TextStyle(
+                              fontSize: 48,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF07C160),
+                              fontFamily: 'HarmonyOS Sans SC',
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 48),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 400),
+                  transitionBuilder:
+                      (Widget child, Animation<double> animation) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position:
+                                Tween<Offset>(
+                                  begin: const Offset(0.0, 0.3),
+                                  end: Offset.zero,
+                                ).animate(
+                                  CurvedAnimation(
+                                    parent: animation,
+                                    curve: Curves.easeOutCubic,
+                                  ),
+                                ),
+                            child: child,
+                          ),
+                        );
+                      },
+                  child: _currentTaskName.isNotEmpty
+                      ? Column(
+                          key: ValueKey<String>(
+                            '$_currentTaskName-$_currentTaskStatus',
+                          ),
+                          children: [
+                            Text(
+                              _currentTaskName,
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.black87,
+                                fontFamily: 'HarmonyOS Sans SC',
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            AnimatedDefaultTextStyle(
+                              duration: const Duration(milliseconds: 300),
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: _currentTaskStatus == '已完成'
+                                    ? const Color(0xFF07C160)
+                                    : Colors.grey[600],
+                                fontFamily: 'HarmonyOS Sans SC',
+                              ),
+                              child: Text(
+                                _currentTaskStatus,
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ],
+                        )
+                      : const SizedBox.shrink(key: ValueKey<String>('empty')),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -800,7 +845,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
   Widget _buildCoverPage() {
     final yearText = widget.year != null ? '${widget.year}年' : '历史以来';
     final gradients = WarmTheme.getPageGradients();
-    
+
     return Container(
       decoration: BoxDecoration(
         gradient: gradients[0], // 封面页渐变
@@ -848,13 +893,9 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                 ),
               ),
               const SizedBox(height: 64),
-              Container(
-                width: 80,
-                height: 1,
-                color: Colors.grey[300],
-              ),
+              Container(width: 80, height: 1, color: Colors.grey[300]),
               const SizedBox(height: 32),
-                  FadeInText(
+              FadeInText(
                 text: AnnualReportTexts.coverPoem1,
                 delay: const Duration(milliseconds: 1000),
                 style: TextStyle(
@@ -911,7 +952,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
     final totalFriends = _getTotalFriends();
     final yearText = widget.year != null ? '${widget.year}年' : '这段时光';
     final gradients = WarmTheme.getPageGradients();
-    
+
     return Stack(
       children: [
         Container(
@@ -929,114 +970,118 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
           ),
         ),
         Container(
-      child: SafeArea(
-        child: Center(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final height = constraints.maxHeight;
-              final width = constraints.maxWidth;
-              final textSize = height * 0.04;
-              final numberSize = height * 0.12;
-              final smallSize = height * 0.028;
-              
-              return Center(
-                child: SingleChildScrollView(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: width * 0.15, vertical: height * 0.1),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        FadeInText(
-                          text: '${AnnualReportTexts.introPrefix}$yearText${AnnualReportTexts.introSuffix}',
-                          style: TextStyle(
-                            fontSize: textSize,
-                            color: Colors.grey[600],
-                            letterSpacing: 2,
-                          ),
+          child: SafeArea(
+            child: Center(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final height = constraints.maxHeight;
+                  final width = constraints.maxWidth;
+                  final textSize = height * 0.04;
+                  final numberSize = height * 0.12;
+                  final smallSize = height * 0.028;
+
+                  return Center(
+                    child: SingleChildScrollView(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: width * 0.15,
+                          vertical: height * 0.1,
                         ),
-                        SizedBox(height: height * 0.05),
-                        Row(
+                        child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.baseline,
-                          textBaseline: TextBaseline.alphabetic,
                           children: [
                             FadeInText(
-                              text: AnnualReportTexts.introWithFriends,
-                              delay: const Duration(milliseconds: 300),
+                              text:
+                                  '${AnnualReportTexts.introPrefix}$yearText${AnnualReportTexts.introSuffix}',
                               style: TextStyle(
                                 fontSize: textSize,
-                                color: Colors.black87,
+                                color: Colors.grey[600],
+                                letterSpacing: 2,
                               ),
                             ),
+                            SizedBox(height: height * 0.05),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              children: [
+                                FadeInText(
+                                  text: AnnualReportTexts.introWithFriends,
+                                  delay: const Duration(milliseconds: 300),
+                                  style: TextStyle(
+                                    fontSize: textSize,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                SlideInCard(
+                                  delay: const Duration(milliseconds: 500),
+                                  child: AnimatedNumberDisplay(
+                                    value: totalFriends.toDouble(),
+                                    suffix: '',
+                                    style: TextStyle(
+                                      fontSize: numberSize,
+                                      fontWeight: FontWeight.bold,
+                                      color: const Color(0xFF07C160),
+                                      height: 1.0,
+                                    ),
+                                  ),
+                                ),
+                                FadeInText(
+                                  text: AnnualReportTexts.introFriendsUnit,
+                                  delay: const Duration(milliseconds: 700),
+                                  style: TextStyle(
+                                    fontSize: textSize,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: height * 0.04),
+                            FadeInText(
+                              text: AnnualReportTexts.introExchanged,
+                              delay: const Duration(milliseconds: 900),
+                              style: TextStyle(
+                                fontSize: textSize,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            SizedBox(height: height * 0.04),
                             SlideInCard(
-                              delay: const Duration(milliseconds: 500),
+                              delay: const Duration(milliseconds: 1100),
                               child: AnimatedNumberDisplay(
-                                value: totalFriends.toDouble(),
-                                suffix: '',
+                                value: totalMessages.toDouble(),
+                                suffix: AnnualReportTexts.introMessagesUnit,
                                 style: TextStyle(
-                                  fontSize: numberSize,
+                                  fontSize: numberSize * 0.8,
                                   fontWeight: FontWeight.bold,
                                   color: const Color(0xFF07C160),
                                   height: 1.0,
                                 ),
                               ),
                             ),
+                            SizedBox(height: height * 0.08),
                             FadeInText(
-                              text: AnnualReportTexts.introFriendsUnit,
-                              delay: const Duration(milliseconds: 700),
+                              text: _getOpeningComment(totalMessages),
+                              delay: const Duration(milliseconds: 1400),
                               style: TextStyle(
-                                fontSize: textSize,
-                                color: Colors.black87,
+                                fontSize: smallSize,
+                                color: Colors.grey[500],
+                                fontStyle: FontStyle.italic,
+                                height: 2.0,
+                                letterSpacing: 0.5,
                               ),
+                              textAlign: TextAlign.center,
                             ),
                           ],
                         ),
-                        SizedBox(height: height * 0.04),
-                        FadeInText(
-                          text: AnnualReportTexts.introExchanged,
-                          delay: const Duration(milliseconds: 900),
-                          style: TextStyle(
-                            fontSize: textSize,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        SizedBox(height: height * 0.04),
-                        SlideInCard(
-                          delay: const Duration(milliseconds: 1100),
-                          child: AnimatedNumberDisplay(
-                            value: totalMessages.toDouble(),
-                            suffix: AnnualReportTexts.introMessagesUnit,
-                            style: TextStyle(
-                              fontSize: numberSize * 0.8,
-                              fontWeight: FontWeight.bold,
-                              color: const Color(0xFF07C160),
-                              height: 1.0,
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: height * 0.08),
-                        FadeInText(
-                          text: _getOpeningComment(totalMessages),
-                          delay: const Duration(milliseconds: 1400),
-                          style: TextStyle(
-                            fontSize: smallSize,
-                            color: Colors.grey[500],
-                            fontStyle: FontStyle.italic,
-                            height: 2.0,
-                            letterSpacing: 0.5,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
-              );
-            },
+                  );
+                },
+              ),
+            ),
           ),
         ),
-      ),
-    ),
       ],
     );
   }
@@ -1060,19 +1105,23 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
   Widget _buildComprehensiveFriendshipPage() {
     // 获取数据
     final List<dynamic> coreFriendsJson = _reportData!['coreFriends'] ?? [];
-    final coreFriends = coreFriendsJson.map((e) => FriendshipRanking.fromJson(e)).toList();
-    
+    final coreFriends = coreFriendsJson
+        .map((e) => FriendshipRanking.fromJson(e))
+        .toList();
+
     final List<dynamic> confidantJson = _reportData!['confidant'] ?? [];
-    final confidants = confidantJson.map((e) => FriendshipRanking.fromJson(e)).toList();
-    
+    final confidants = confidantJson
+        .map((e) => FriendshipRanking.fromJson(e))
+        .toList();
+
     final List<dynamic> listenersJson = _reportData!['listeners'] ?? [];
-    final listeners = listenersJson.map((e) => FriendshipRanking.fromJson(e)).toList();
-    
+    final listeners = listenersJson
+        .map((e) => FriendshipRanking.fromJson(e))
+        .toList();
+
     if (coreFriends.isEmpty) {
       return Container(
-        decoration: BoxDecoration(
-          gradient: WarmTheme.getPageGradients()[2],
-        ),
+        decoration: BoxDecoration(gradient: WarmTheme.getPageGradients()[2]),
         child: const Center(
           child: Text('暂无数据', style: TextStyle(color: Colors.grey)),
         ),
@@ -1083,7 +1132,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
     final topConfidant = confidants.isNotEmpty ? confidants[0] : null;
     final topListener = listeners.isNotEmpty ? listeners[0] : null;
     final gradients = WarmTheme.getPageGradients();
-    
+
     return Container(
       decoration: BoxDecoration(
         gradient: gradients[2], // 年度挚友页渐变
@@ -1094,94 +1143,97 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
             final height = constraints.maxHeight;
             final width = constraints.maxWidth;
             // 统一字体系统：只用两种尺寸
-            final emphasisSize = height * 0.045;  // 强调字体：标题、名字、数字
-            final normalSize = height * 0.024;    // 正常字体：所有其他文本
-            
+            final emphasisSize = height * 0.045; // 强调字体：标题、名字、数字
+            final normalSize = height * 0.024; // 正常字体：所有其他文本
+
             return Center(
-                child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: width * 0.1, vertical: height * 0.06),
-                  child: Column(
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: width * 0.1,
+                  vertical: height * 0.06,
+                ),
+                child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
-                    children: [
+                  children: [
                     // 标题
-                      FadeInText(
+                    FadeInText(
                       text: AnnualReportTexts.friendshipTitle,
-                        style: TextStyle(
+                      style: TextStyle(
                         fontSize: emphasisSize,
                         fontWeight: FontWeight.w600,
-                          color: const Color(0xFF07C160),
+                        color: const Color(0xFF07C160),
                         letterSpacing: 2,
-                        ),
                       ),
+                    ),
                     SizedBox(height: height * 0.03),
-                    
+
                     // 主要内容
-                      FadeInText(
+                    FadeInText(
                       text: AnnualReportTexts.friendshipIntro,
-                        delay: const Duration(milliseconds: 200),
-                        style: TextStyle(
+                      delay: const Duration(milliseconds: 200),
+                      style: TextStyle(
                         fontSize: normalSize,
                         color: Colors.grey[600],
                       ),
                     ),
                     SizedBox(height: height * 0.025),
-                    
+
                     // 挚友名字
                     SlideInCard(
-                                delay: const Duration(milliseconds: 400),
+                      delay: const Duration(milliseconds: 400),
                       child: Container(
                         constraints: BoxConstraints(maxWidth: width * 0.6),
-            child: _buildNameWithBlur(
+                        child: _buildNameWithBlur(
                           topFriend.displayName,
-              TextStyle(
+                          TextStyle(
                             fontSize: emphasisSize,
                             fontWeight: FontWeight.w600,
                             color: const Color(0xFF07C160),
-              height: 1.3,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-          ),
-        ),
+                            height: 1.3,
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                        ),
+                      ),
                     ),
                     SizedBox(height: height * 0.02),
-                    
+
                     FadeInText(
                       text: AnnualReportTexts.friendshipMostChats,
                       delay: const Duration(milliseconds: 600),
-          style: TextStyle(
+                      style: TextStyle(
                         fontSize: normalSize,
                         color: Colors.grey[600],
                       ),
                     ),
                     SizedBox(height: height * 0.015),
-                    
+
                     // 总消息数
                     SlideInCard(
                       delay: const Duration(milliseconds: 800),
                       child: AnimatedNumberDisplay(
                         value: topFriend.count.toDouble(),
                         suffix: AnnualReportTexts.friendshipMessagesCount,
-          style: TextStyle(
+                        style: TextStyle(
                           fontSize: emphasisSize,
                           fontWeight: FontWeight.w600,
                           color: const Color(0xFF07C160),
                         ),
                       ),
                     ),
-                    
+
                     SizedBox(height: height * 0.04),
-                    
+
                     // 分隔线
                     Container(
                       width: width * 0.2,
                       height: 1,
                       color: Colors.grey[300],
                     ),
-                    
+
                     SizedBox(height: height * 0.035),
-                    
+
                     // 倾诉和听众信息
                     if (topConfidant != null && topListener != null) ...[
                       Row(
@@ -1189,72 +1241,75 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                         children: [
                           // 你最爱给谁发
                           Expanded(
-                  child: Column(
+                            child: Column(
                               mainAxisSize: MainAxisSize.min,
-                    children: [
-                      FadeInText(
+                              children: [
+                                FadeInText(
                                   text: AnnualReportTexts.friendshipYouSendTo,
                                   delay: const Duration(milliseconds: 1000),
-                        style: TextStyle(
+                                  style: TextStyle(
                                     fontSize: normalSize * 0.9,
                                     color: Colors.grey[500],
                                   ),
                                 ),
                                 SizedBox(height: height * 0.015),
-                       SlideInCard(
+                                SlideInCard(
                                   delay: const Duration(milliseconds: 1200),
                                   child: _buildNameWithBlur(
                                     topConfidant.displayName,
-                        TextStyle(
-                                    fontSize: normalSize,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.black87,
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                          ),
+                                    TextStyle(
+                                      fontSize: normalSize,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black87,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 2,
+                                  ),
                                 ),
                                 SizedBox(height: height * 0.012),
-                      FadeInText(
-                                  text: '${topConfidant.count}${AnnualReportTexts.friendshipMessagesCount}',
+                                FadeInText(
+                                  text:
+                                      '${topConfidant.count}${AnnualReportTexts.friendshipMessagesCount}',
                                   delay: const Duration(milliseconds: 1400),
-                        style: TextStyle(
+                                  style: TextStyle(
                                     fontSize: emphasisSize * 0.8,
                                     color: const Color(0xFF07C160),
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
-                                if (topConfidant.details != null && 
-                                    topConfidant.details!['receivedCount'] != null) ...[
+                                if (topConfidant.details != null &&
+                                    topConfidant.details!['receivedCount'] !=
+                                        null) ...[
                                   SizedBox(height: height * 0.01),
-                      FadeInText(
-                                    text: '${AnnualReportTexts.friendshipTheyReply}${topConfidant.details!['receivedCount']}${AnnualReportTexts.friendshipMessagesCount}',
-                        delay: const Duration(milliseconds: 1500),
-                        style: TextStyle(
+                                  FadeInText(
+                                    text:
+                                        '${AnnualReportTexts.friendshipTheyReply}${topConfidant.details!['receivedCount']}${AnnualReportTexts.friendshipMessagesCount}',
+                                    delay: const Duration(milliseconds: 1500),
+                                    style: TextStyle(
                                       fontSize: normalSize * 0.85,
-                          color: Colors.grey[500],
-                        ),
-                      ),
+                                      color: Colors.grey[500],
+                                    ),
+                                  ),
                                 ],
-                    ],
-                  ),
-                ),
-                          
+                              ],
+                            ),
+                          ),
+
                           Container(
                             width: 1,
                             height: height * 0.12,
                             color: Colors.grey[300],
                           ),
-                          
+
                           // 谁最爱给你发
                           Expanded(
-                  child: Column(
+                            child: Column(
                               mainAxisSize: MainAxisSize.min,
-                    children: [
-                      FadeInText(
+                              children: [
+                                FadeInText(
                                   text: AnnualReportTexts.friendshipWhoSendsYou,
                                   delay: const Duration(milliseconds: 1000),
-                        style: TextStyle(
+                                  style: TextStyle(
                                     fontSize: normalSize * 0.9,
                                     color: Colors.grey[500],
                                   ),
@@ -1264,63 +1319,66 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                                   delay: const Duration(milliseconds: 1200),
                                   child: _buildNameWithBlur(
                                     topListener.displayName,
-                            TextStyle(
-                                    fontSize: normalSize,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.black87,
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                          ),
+                                    TextStyle(
+                                      fontSize: normalSize,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black87,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 2,
+                                  ),
                                 ),
                                 SizedBox(height: height * 0.012),
-                      FadeInText(
-                                  text: '${topListener.count}${AnnualReportTexts.friendshipMessagesCount}',
+                                FadeInText(
+                                  text:
+                                      '${topListener.count}${AnnualReportTexts.friendshipMessagesCount}',
                                   delay: const Duration(milliseconds: 1400),
-                        style: TextStyle(
+                                  style: TextStyle(
                                     fontSize: emphasisSize * 0.8,
                                     color: const Color(0xFF07C160),
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
-                                if (topListener.details != null && 
-                                    topListener.details!['sentCount'] != null) ...[
+                                if (topListener.details != null &&
+                                    topListener.details!['sentCount'] !=
+                                        null) ...[
                                   SizedBox(height: height * 0.01),
-                      FadeInText(
-                                    text: '${AnnualReportTexts.friendshipYouReply}${topListener.details!['sentCount']}${AnnualReportTexts.friendshipMessagesCount}',
+                                  FadeInText(
+                                    text:
+                                        '${AnnualReportTexts.friendshipYouReply}${topListener.details!['sentCount']}${AnnualReportTexts.friendshipMessagesCount}',
                                     delay: const Duration(milliseconds: 1500),
-                        style: TextStyle(
+                                    style: TextStyle(
                                       fontSize: normalSize * 0.85,
-                          color: Colors.grey[500],
-                        ),
-                      ),
+                                      color: Colors.grey[500],
+                                    ),
+                                  ),
                                 ],
                               ],
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
                       ),
-                      
+
                       SizedBox(height: height * 0.035),
-                      
+
                       // 底部寄语
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: width * 0.08),
                         child: FadeInText(
                           text: AnnualReportTexts.friendshipClosing,
                           delay: const Duration(milliseconds: 1800),
-                        style: TextStyle(
+                          style: TextStyle(
                             fontSize: normalSize * 0.9,
-                          color: Colors.grey[500],
-                          fontStyle: FontStyle.italic,
+                            color: Colors.grey[500],
+                            fontStyle: FontStyle.italic,
                             height: 1.8,
-                          letterSpacing: 0.5,
-                        ),
-                        textAlign: TextAlign.center,
+                            letterSpacing: 0.5,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
                       ),
                     ],
-                    ],
+                  ],
                 ),
               ),
             );
@@ -1333,14 +1391,14 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
   // 双向奔赴页 - 横屏水平对称设计
   Widget _buildMutualFriendsPage() {
     final List<dynamic> friendsJson = _reportData!['mutualFriends'] ?? [];
-    final friends = friendsJson.map((e) => FriendshipRanking.fromJson(e)).toList();
+    final friends = friendsJson
+        .map((e) => FriendshipRanking.fromJson(e))
+        .toList();
     final gradients = WarmTheme.getPageGradients();
-    
+
     if (friends.isEmpty) {
       return Container(
-        decoration: BoxDecoration(
-          gradient: gradients[3],
-        ),
+        decoration: BoxDecoration(gradient: gradients[3]),
         child: const Center(
           child: Text('暂无数据', style: TextStyle(color: Colors.grey)),
         ),
@@ -1351,7 +1409,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
     final ratio = friend1.details?['ratio'] as String? ?? '1.0';
     final sent = friend1.details?['sentCount'] as int? ?? 0;
     final received = friend1.details?['receivedCount'] as int? ?? 0;
-    
+
     return Stack(
       children: [
         Container(
@@ -1369,198 +1427,206 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
           ),
         ),
         Container(
-      child: SafeArea(
-        child: Center(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final height = constraints.maxHeight;
-              final width = constraints.maxWidth;
-              final titleSize = height * 0.05;
-              final nameSize = height * 0.065;
-              final numberSize = height * 0.1;
-              final textSize = height * 0.03;
-              final smallSize = height * 0.026;
-              
-              return Center(
-                child: SingleChildScrollView(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: width * 0.08, vertical: height * 0.1),
-                    child: Column(
-                      children: [
-                        FadeInText(
-                          text: AnnualReportTexts.mutualTitle,
-                          style: TextStyle(
-                            fontSize: titleSize,
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF07C160),
-                            letterSpacing: 3,
-                          ),
+          child: SafeArea(
+            child: Center(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final height = constraints.maxHeight;
+                  final width = constraints.maxWidth;
+                  final titleSize = height * 0.05;
+                  final nameSize = height * 0.065;
+                  final numberSize = height * 0.1;
+                  final textSize = height * 0.03;
+                  final smallSize = height * 0.026;
+
+                  return Center(
+                    child: SingleChildScrollView(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: width * 0.08,
+                          vertical: height * 0.1,
                         ),
-                        SizedBox(height: height * 0.015),
-                        FadeInText(
-                          text: AnnualReportTexts.mutualSubtitle,
-                          delay: const Duration(milliseconds: 200),
-                          style: TextStyle(
-                            fontSize: smallSize,
-                            color: Colors.grey[500],
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        SizedBox(height: height * 0.06),
-                        SlideInCard(
-                          delay: const Duration(milliseconds: 400),
-                          child: Container(
-                            constraints: BoxConstraints(maxWidth: width * 0.5),
-                            child: _buildNameWithBlur(
-                              friend1.displayName,
-                              TextStyle(
-                                fontSize: nameSize,
+                        child: Column(
+                          children: [
+                            FadeInText(
+                              text: AnnualReportTexts.mutualTitle,
+                              style: TextStyle(
+                                fontSize: titleSize,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.black87,
-                                height: 1.2,
+                                color: const Color(0xFF07C160),
+                                letterSpacing: 3,
+                              ),
+                            ),
+                            SizedBox(height: height * 0.015),
+                            FadeInText(
+                              text: AnnualReportTexts.mutualSubtitle,
+                              delay: const Duration(milliseconds: 200),
+                              style: TextStyle(
+                                fontSize: smallSize,
+                                color: Colors.grey[500],
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            SizedBox(height: height * 0.06),
+                            SlideInCard(
+                              delay: const Duration(milliseconds: 400),
+                              child: Container(
+                                constraints: BoxConstraints(
+                                  maxWidth: width * 0.5,
+                                ),
+                                child: _buildNameWithBlur(
+                                  friend1.displayName,
+                                  TextStyle(
+                                    fontSize: nameSize,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                    height: 1.2,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 2,
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: height * 0.08),
+
+                            // 水平排列数据
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                // 你发
+                                Column(
+                                  children: [
+                                    FadeInText(
+                                      text: AnnualReportTexts.mutualYouSent,
+                                      delay: const Duration(milliseconds: 600),
+                                      style: TextStyle(
+                                        fontSize: textSize,
+                                        color: Colors.grey[500],
+                                      ),
+                                    ),
+                                    SizedBox(height: height * 0.02),
+                                    FadeInText(
+                                      text: '$sent',
+                                      delay: const Duration(milliseconds: 800),
+                                      style: TextStyle(
+                                        fontSize: numberSize,
+                                        fontWeight: FontWeight.bold,
+                                        color: const Color(0xFF07C160),
+                                        height: 1.0,
+                                      ),
+                                    ),
+                                    SizedBox(height: 4),
+                                    FadeInText(
+                                      text:
+                                          AnnualReportTexts.mutualMessagesUnit,
+                                      delay: const Duration(milliseconds: 900),
+                                      style: TextStyle(
+                                        fontSize: smallSize,
+                                        color: Colors.grey[500],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+
+                                SizedBox(width: width * 0.15),
+
+                                // 箭头
+                                FadeInText(
+                                  text: '⇄',
+                                  delay: const Duration(milliseconds: 1000),
+                                  style: TextStyle(
+                                    fontSize: numberSize * 0.4,
+                                    color: Colors.grey[300],
+                                  ),
+                                ),
+
+                                SizedBox(width: width * 0.15),
+
+                                // TA回
+                                Column(
+                                  children: [
+                                    FadeInText(
+                                      text: AnnualReportTexts.mutualTheySent,
+                                      delay: const Duration(milliseconds: 600),
+                                      style: TextStyle(
+                                        fontSize: textSize,
+                                        color: Colors.grey[500],
+                                      ),
+                                    ),
+                                    SizedBox(height: height * 0.02),
+                                    FadeInText(
+                                      text: '$received',
+                                      delay: const Duration(milliseconds: 800),
+                                      style: TextStyle(
+                                        fontSize: numberSize,
+                                        fontWeight: FontWeight.bold,
+                                        color: const Color(0xFF07C160),
+                                        height: 1.0,
+                                      ),
+                                    ),
+                                    SizedBox(height: 4),
+                                    FadeInText(
+                                      text:
+                                          AnnualReportTexts.mutualMessagesUnit,
+                                      delay: const Duration(milliseconds: 900),
+                                      style: TextStyle(
+                                        fontSize: smallSize,
+                                        color: Colors.grey[500],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+
+                            SizedBox(height: height * 0.08),
+
+                            FadeInText(
+                              text:
+                                  '${AnnualReportTexts.mutualRatioPrefix}$ratio',
+                              delay: const Duration(milliseconds: 1100),
+                              style: TextStyle(
+                                fontSize: textSize,
+                                color: const Color(0xFF07C160),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            SizedBox(height: height * 0.04),
+                            FadeInText(
+                              text: AnnualReportTexts.mutualClosing,
+                              delay: const Duration(milliseconds: 1300),
+                              style: TextStyle(
+                                fontSize: smallSize * 0.9,
+                                color: Colors.grey[500],
+                                fontStyle: FontStyle.italic,
+                                height: 2.0,
+                                letterSpacing: 0.5,
                               ),
                               textAlign: TextAlign.center,
-                              maxLines: 2,
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: height * 0.08),
-                        
-                        // 水平排列数据
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            // 你发
-                            Column(
-                              children: [
-                                FadeInText(
-                                  text: AnnualReportTexts.mutualYouSent,
-                                  delay: const Duration(milliseconds: 600),
-                                  style: TextStyle(
-                                    fontSize: textSize,
-                                    color: Colors.grey[500],
-                                  ),
-                                ),
-                                SizedBox(height: height * 0.02),
-                                FadeInText(
-                                  text: '$sent',
-                                  delay: const Duration(milliseconds: 800),
-                                  style: TextStyle(
-                                    fontSize: numberSize,
-                                    fontWeight: FontWeight.bold,
-                                    color: const Color(0xFF07C160),
-                                    height: 1.0,
-                                  ),
-                                ),
-                                SizedBox(height: 4),
-                                FadeInText(
-                                  text: AnnualReportTexts.mutualMessagesUnit,
-                                  delay: const Duration(milliseconds: 900),
-                                  style: TextStyle(
-                                    fontSize: smallSize,
-                                    color: Colors.grey[500],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            
-                            SizedBox(width: width * 0.15),
-                            
-                            // 箭头
-                            FadeInText(
-                              text: '⇄',
-                              delay: const Duration(milliseconds: 1000),
-                              style: TextStyle(
-                                fontSize: numberSize * 0.4,
-                                color: Colors.grey[300],
-                              ),
-                            ),
-                            
-                            SizedBox(width: width * 0.15),
-                            
-                            // TA回
-                            Column(
-                              children: [
-                                FadeInText(
-                                  text: AnnualReportTexts.mutualTheySent,
-                                  delay: const Duration(milliseconds: 600),
-                                  style: TextStyle(
-                                    fontSize: textSize,
-                                    color: Colors.grey[500],
-                                  ),
-                                ),
-                                SizedBox(height: height * 0.02),
-                                FadeInText(
-                                  text: '$received',
-                                  delay: const Duration(milliseconds: 800),
-                                  style: TextStyle(
-                                    fontSize: numberSize,
-                                    fontWeight: FontWeight.bold,
-                                    color: const Color(0xFF07C160),
-                                    height: 1.0,
-                                  ),
-                                ),
-                                SizedBox(height: 4),
-                                FadeInText(
-                                  text: AnnualReportTexts.mutualMessagesUnit,
-                                  delay: const Duration(milliseconds: 900),
-                                  style: TextStyle(
-                                    fontSize: smallSize,
-                                    color: Colors.grey[500],
-                                  ),
-                                ),
-                              ],
                             ),
                           ],
                         ),
-                        
-                        SizedBox(height: height * 0.08),
-                        
-                        FadeInText(
-                          text: '${AnnualReportTexts.mutualRatioPrefix}$ratio',
-                          delay: const Duration(milliseconds: 1100),
-                          style: TextStyle(
-                            fontSize: textSize,
-                            color: const Color(0xFF07C160),
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        SizedBox(height: height * 0.04),
-                        FadeInText(
-                          text: AnnualReportTexts.mutualClosing,
-                          delay: const Duration(milliseconds: 1300),
-                          style: TextStyle(
-                            fontSize: smallSize * 0.9,
-                            color: Colors.grey[500],
-                            fontStyle: FontStyle.italic,
-                            height: 2.0,
-                            letterSpacing: 0.5,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
-              );
-            },
+                  );
+                },
+              ),
+            ),
           ),
         ),
-      ),
-    ),
       ],
     );
   }
 
   // 主动社交指数页
   Widget _buildSocialInitiativePage() {
-    final socialData = SocialStyleData.fromJson(_reportData!['socialInitiative']);
-    
+    final socialData = SocialStyleData.fromJson(
+      _reportData!['socialInitiative'],
+    );
+
     if (socialData.initiativeRanking.isEmpty) {
       return Container(
-        decoration: BoxDecoration(
-          gradient: WarmTheme.getPageGradients()[4],
-        ),
+        decoration: BoxDecoration(gradient: WarmTheme.getPageGradients()[4]),
         child: const Center(
           child: Text('暂无数据', style: TextStyle(color: Colors.grey)),
         ),
@@ -1570,7 +1636,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
     final friend1 = socialData.initiativeRanking.first;
     final rate = friend1.percentage;
     final gradients = WarmTheme.getPageGradients();
-    
+
     return Stack(
       children: [
         Container(
@@ -1588,112 +1654,114 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
           ),
         ),
         Container(
-      child: SafeArea(
-        child: Center(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final height = constraints.maxHeight;
-              final width = constraints.maxWidth;
-              final titleSize = height > 700 ? 32.0 : 26.0;
-              final nameSize = height > 700 ? 38.0 : 32.0;
-              final descSize = height > 700 ? 18.0 : 16.0;
-              
-              return Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: width * 0.1, 
-                  vertical: height * 0.05,
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    FadeInText(
-                      text: AnnualReportTexts.socialTitle,
-                      style: TextStyle(
-                        fontSize: titleSize,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF07C160),
-                        letterSpacing: 2,
-                      ),
-                      textAlign: TextAlign.center,
+          child: SafeArea(
+            child: Center(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final height = constraints.maxHeight;
+                  final width = constraints.maxWidth;
+                  final titleSize = height > 700 ? 32.0 : 26.0;
+                  final nameSize = height > 700 ? 38.0 : 32.0;
+                  final descSize = height > 700 ? 18.0 : 16.0;
+
+                  return Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: width * 0.1,
+                      vertical: height * 0.05,
                     ),
-                    SizedBox(height: height * 0.06),
-                    
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: width * 0.05),
-                      child: SlideInCard(
-                        delay: const Duration(milliseconds: 300),
-                        child: Column(
-                          children: [
-                            Text(
-                              '在与',
-                              style: TextStyle(
-                                fontSize: descSize - 1,
-                                color: Colors.grey[700],
-                                height: 1.9,
-                                letterSpacing: 0.5,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            _buildNameWithBlur(
-                              friend1.displayName,
-                              TextStyle(
-                                fontSize: descSize - 1,
-                                color: Colors.grey[700],
-                                fontWeight: FontWeight.w600,
-                                height: 1.9,
-                                letterSpacing: 0.5,
-                              ),
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                            ),
-                            Text(
-                              '的聊天中，你发起了 ${(rate * 100).toStringAsFixed(1)}% 的对话',
-                              style: TextStyle(
-                                fontSize: descSize - 1,
-                                color: Colors.grey[700],
-                                height: 1.9,
-                                letterSpacing: 0.5,
-                              ),
-                              textAlign: TextAlign.center,
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        FadeInText(
+                          text: AnnualReportTexts.socialTitle,
+                          style: TextStyle(
+                            fontSize: titleSize,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF07C160),
+                            letterSpacing: 2,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
-                      ),
-                    ),
-                    SizedBox(height: height * 0.06),
-                    SlideInCard(
-                      delay: const Duration(milliseconds: 600),
-                      child: Text(
-                        '${(rate * 100).toStringAsFixed(1)}%',
-                        style: TextStyle(
-                          fontSize: nameSize,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF07C160),
+                        SizedBox(height: height * 0.06),
+
+                        Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: width * 0.05,
+                          ),
+                          child: SlideInCard(
+                            delay: const Duration(milliseconds: 300),
+                            child: Column(
+                              children: [
+                                Text(
+                                  '在与',
+                                  style: TextStyle(
+                                    fontSize: descSize - 1,
+                                    color: Colors.grey[700],
+                                    height: 1.9,
+                                    letterSpacing: 0.5,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                _buildNameWithBlur(
+                                  friend1.displayName,
+                                  TextStyle(
+                                    fontSize: descSize - 1,
+                                    color: Colors.grey[700],
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.9,
+                                    letterSpacing: 0.5,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                ),
+                                Text(
+                                  '的聊天中，你发起了 ${(rate * 100).toStringAsFixed(1)}% 的对话',
+                                  style: TextStyle(
+                                    fontSize: descSize - 1,
+                                    color: Colors.grey[700],
+                                    height: 1.9,
+                                    letterSpacing: 0.5,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                        textAlign: TextAlign.center,
-                      ),
+                        SizedBox(height: height * 0.06),
+                        SlideInCard(
+                          delay: const Duration(milliseconds: 600),
+                          child: Text(
+                            '${(rate * 100).toStringAsFixed(1)}%',
+                            style: TextStyle(
+                              fontSize: nameSize,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFF07C160),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        SizedBox(height: height * 0.02),
+                        FadeInText(
+                          text: AnnualReportTexts.socialInitiatedUnit,
+                          delay: const Duration(milliseconds: 800),
+                          style: TextStyle(
+                            fontSize: descSize - 2,
+                            color: Colors.grey[600],
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ),
-                    SizedBox(height: height * 0.02),
-                    FadeInText(
-                      text: AnnualReportTexts.socialInitiatedUnit,
-                      delay: const Duration(milliseconds: 800),
-                      style: TextStyle(
-                        fontSize: descSize - 2,
-                        color: Colors.grey[600],
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              );
-            },
+                  );
+                },
+              ),
+            ),
           ),
         ),
-      ),
-    ),
       ],
     );
   }
@@ -1702,14 +1770,10 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
   Widget _buildPeakDayPage() {
     final peakDay = ChatPeakDay.fromJson(_reportData!['peakDay']);
     final gradients = WarmTheme.getPageGradients();
-    
+
     return Stack(
       children: [
-        Container(
-          decoration: BoxDecoration(
-            gradient: gradients[5],
-          ),
-        ),
+        Container(decoration: BoxDecoration(gradient: gradients[5])),
         const Positioned.fill(
           child: FloatingDots(
             dotCount: 20,
@@ -1725,13 +1789,13 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                 builder: (context, constraints) {
                   final height = constraints.maxHeight;
                   final width = constraints.maxWidth;
-                  
+
                   final titleSize = height > 700 ? 36.0 : 32.0;
                   final bodySize = height > 700 ? 24.0 : 22.0;
-                  
+
                   return Padding(
                     padding: EdgeInsets.symmetric(
-                      horizontal: width * 0.08, 
+                      horizontal: width * 0.08,
                       vertical: height * 0.1,
                     ),
                     child: SingleChildScrollView(
@@ -1750,7 +1814,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                             ),
                           ),
                           SizedBox(height: height * 0.08),
-                          
+
                           // 第一句：日期
                           FadeInRichText(
                             text: peakDay.formattedDate,
@@ -1772,10 +1836,11 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                             delay: const Duration(milliseconds: 200),
                           ),
                           SizedBox(height: height * 0.05),
-                          
+
                           // 第二句：消息总数
                           FadeInRichText(
-                            text: '${AnnualReportTexts.peakDayYouChatted}${peakDay.messageCount}${AnnualReportTexts.peakDayMessagesCount}',
+                            text:
+                                '${AnnualReportTexts.peakDayYouChatted}${peakDay.messageCount}${AnnualReportTexts.peakDayMessagesCount}',
                             baseStyle: TextStyle(
                               fontSize: bodySize,
                               color: Colors.black87,
@@ -1793,10 +1858,10 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                             },
                             delay: const Duration(milliseconds: 400),
                           ),
-                          
+
                           if (peakDay.topFriendDisplayName != null) ...[
                             SizedBox(height: height * 0.06),
-                            
+
                             // 第三句前缀：其中与
                             FadeInText(
                               text: AnnualReportTexts.peakDayWithFriendPrefix,
@@ -1810,7 +1875,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                               ),
                               textAlign: TextAlign.center,
                             ),
-                            
+
                             // 好友名字
                             SlideInCard(
                               delay: const Duration(milliseconds: 700),
@@ -1826,10 +1891,11 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                                 maxLines: 1,
                               ),
                             ),
-                            
+
                             // 第三句后缀：聊了 XX 条
                             FadeInRichText(
-                              text: '${AnnualReportTexts.peakDayWithFriendSuffix}${peakDay.topFriendMessageCount}${AnnualReportTexts.peakDayWithFriendMessagesUnit}',
+                              text:
+                                  '${AnnualReportTexts.peakDayWithFriendSuffix}${peakDay.topFriendMessageCount}${AnnualReportTexts.peakDayWithFriendMessagesUnit}',
                               baseStyle: TextStyle(
                                 fontSize: bodySize,
                                 color: Colors.black87,
@@ -1838,7 +1904,8 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                                 fontWeight: FontWeight.w500,
                               ),
                               highlights: {
-                                peakDay.topFriendMessageCount.toString(): TextStyle(
+                                peakDay.topFriendMessageCount
+                                    .toString(): TextStyle(
                                   fontSize: bodySize,
                                   fontWeight: FontWeight.bold,
                                   color: const Color(0xFF07C160),
@@ -1848,12 +1915,14 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                               delay: const Duration(milliseconds: 800),
                             ),
                           ],
-                        
-                        SizedBox(height: height * 0.08),
-                          
+
+                          SizedBox(height: height * 0.08),
+
                           // 第四部分：情感总结
                           FadeInText(
-                            text: AnnualReportTexts.getPeakDayComment(peakDay.messageCount),
+                            text: AnnualReportTexts.getPeakDayComment(
+                              peakDay.messageCount,
+                            ),
                             delay: const Duration(milliseconds: 900),
                             style: TextStyle(
                               fontSize: bodySize - 2,
@@ -1878,15 +1947,14 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
     );
   }
 
-
-// 连续打卡页
+  // 连续打卡页
   Widget _buildCheckInPage() {
     final checkIn = _reportData!['checkIn'] as Map<String, dynamic>;
     final days = checkIn['days'] ?? 0;
     final displayName = checkIn['displayName'] ?? '未知';
     final startDateStr = checkIn['startDate'] as String?;
     final endDateStr = checkIn['endDate'] as String?;
-    
+
     // 格式化日期，只保留年月日
     String? startDate;
     String? endDate;
@@ -1896,16 +1964,12 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
     if (endDateStr != null) {
       endDate = endDateStr.split('T').first;
     }
-    
+
     final gradients = WarmTheme.getPageGradients();
 
     return Stack(
       children: [
-        Container(
-          decoration: BoxDecoration(
-            gradient: gradients[6],
-          ),
-        ),
+        Container(decoration: BoxDecoration(gradient: gradients[6])),
         const Positioned.fill(
           child: FloatingDots(
             dotCount: 16,
@@ -1921,7 +1985,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                 builder: (context, constraints) {
                   final height = constraints.maxHeight;
                   final width = constraints.maxWidth;
-                  
+
                   final titleSize = height > 700 ? 36.0 : 32.0;
                   final bodySize = height > 700 ? 24.0 : 22.0;
 
@@ -1976,7 +2040,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                             ),
                             textAlign: TextAlign.center,
                           ),
-                          
+
                           // 好友名字
                           SlideInCard(
                             delay: const Duration(milliseconds: 400),
@@ -1992,7 +2056,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                               maxLines: 1,
                             ),
                           ),
-                          
+
                           // 第一句后缀：连续聊了
                           FadeInText(
                             text: '连续聊了',
@@ -2034,7 +2098,8 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
 
                             // 第三句：时间范围
                             FadeInRichText(
-                              text: '$startDate ${AnnualReportTexts.checkInDateRange} $endDate',
+                              text:
+                                  '$startDate ${AnnualReportTexts.checkInDateRange} $endDate',
                               baseStyle: TextStyle(
                                 fontSize: bodySize - 2,
                                 color: Colors.grey[600],
@@ -2096,9 +2161,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
 
     if (activityJson == null) {
       return Container(
-        decoration: BoxDecoration(
-          gradient: gradients[7],
-        ),
+        decoration: BoxDecoration(gradient: gradients[7]),
         child: const Center(child: Text('暂无数据')),
       );
     }
@@ -2200,8 +2263,9 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                         ),
                         SizedBox(height: height * 0.05),
                         Padding(
-                          padding:
-                              EdgeInsets.symmetric(horizontal: width * 0.08),
+                          padding: EdgeInsets.symmetric(
+                            horizontal: width * 0.08,
+                          ),
                           child: FadeInText(
                             text: AnnualReportTexts.activityClosing,
                             delay: const Duration(milliseconds: 900),
@@ -2216,7 +2280,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                           ),
                         ),
                       ],
-                    ), 
+                    ),
                   );
                 },
               ),
@@ -2231,27 +2295,21 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
   Widget _buildMidnightKingPage() {
     final midnightKing = _reportData!['midnightKing'];
     final gradients = WarmTheme.getPageGradients();
-    
+
     if (midnightKing == null || midnightKing['count'] == 0) {
       return Container(
-        decoration: BoxDecoration(
-          gradient: gradients[8],
-        ),
+        decoration: BoxDecoration(gradient: gradients[8]),
         child: const Center(child: Text('暂无深夜聊天数据')),
       );
     }
-    
+
     final displayName = midnightKing['displayName'] as String? ?? '未知';
     final count = midnightKing['count'] as int;
     final percentage = midnightKing['percentage'] as String? ?? '0';
-    
+
     return Stack(
       children: [
-        Container(
-          decoration: BoxDecoration(
-            gradient: gradients[8],
-          ),
-        ),
+        Container(decoration: BoxDecoration(gradient: gradients[8])),
         const Positioned.fill(
           child: FloatingDots(
             dotCount: 12,
@@ -2267,7 +2325,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                 builder: (context, constraints) {
                   final height = constraints.maxHeight;
                   final width = constraints.maxWidth;
-                  
+
                   final titleSize = height > 700 ? 36.0 : 32.0;
                   final bodySize = height > 700 ? 24.0 : 22.0;
 
@@ -2336,7 +2394,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                             ),
                             textAlign: TextAlign.center,
                           ),
-                          
+
                           // 好友名字
                           SlideInCard(
                             delay: const Duration(milliseconds: 600),
@@ -2352,7 +2410,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                               maxLines: 1,
                             ),
                           ),
-                          
+
                           // 第二句后缀：说过
                           FadeInText(
                             text: AnnualReportTexts.midnightChattedPrefix,
@@ -2370,7 +2428,8 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
 
                           // 第三句：消息数
                           FadeInRichText(
-                            text: '$count${AnnualReportTexts.midnightMessagesUnit}',
+                            text:
+                                '$count${AnnualReportTexts.midnightMessagesUnit}',
                             baseStyle: TextStyle(
                               fontSize: bodySize,
                               color: Colors.black87,
@@ -2392,7 +2451,8 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
 
                           // 第四句：占比
                           FadeInRichText(
-                            text: '${AnnualReportTexts.midnightPercentagePrefix}$percentage${AnnualReportTexts.midnightPercentageSuffix}',
+                            text:
+                                '${AnnualReportTexts.midnightPercentagePrefix}$percentage${AnnualReportTexts.midnightPercentageSuffix}',
                             baseStyle: TextStyle(
                               fontSize: bodySize - 2,
                               color: Colors.grey[600],
@@ -2443,26 +2503,36 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
   // 响应速度页（合并最快响应和我回复最快）
   Widget _buildResponseSpeedPage() {
     logger.debug('AnnualReportPage', '========== 构建响应速度页面 ==========');
-    logger.debug('AnnualReportPage', '_reportData 是否为 null: ${_reportData == null}');
+    logger.debug(
+      'AnnualReportPage',
+      '_reportData 是否为 null: ${_reportData == null}',
+    );
 
     if (_reportData == null) {
       logger.error('AnnualReportPage', ' _reportData 为 null！');
       return Container(
-        decoration: BoxDecoration(
-          gradient: WarmTheme.getPageGradients()[9],
-        ),
+        decoration: BoxDecoration(gradient: WarmTheme.getPageGradients()[9]),
         child: const Center(child: Text('数据错误：报告数据为空')),
       );
     }
 
-    logger.debug('AnnualReportPage', '_reportData 包含的键: ${_reportData!.keys.toList()}');
+    logger.debug(
+      'AnnualReportPage',
+      '_reportData 包含的键: ${_reportData!.keys.toList()}',
+    );
 
     final whoRepliesFastest = _reportData!['whoRepliesFastest'] as List?;
     final myFastestReplies = _reportData!['myFastestReplies'] as List?;
 
     logger.info('AnnualReportPage', '响应速度数据检查:');
-    logger.info('AnnualReportPage', '  whoRepliesFastest: ${whoRepliesFastest == null ? "null" : "List(${whoRepliesFastest.length})"}');
-    logger.info('AnnualReportPage', '  myFastestReplies: ${myFastestReplies == null ? "null" : "List(${myFastestReplies.length})"}');
+    logger.info(
+      'AnnualReportPage',
+      '  whoRepliesFastest: ${whoRepliesFastest == null ? "null" : "List(${whoRepliesFastest.length})"}',
+    );
+    logger.info(
+      'AnnualReportPage',
+      '  myFastestReplies: ${myFastestReplies == null ? "null" : "List(${myFastestReplies.length})"}',
+    );
 
     if (whoRepliesFastest != null && whoRepliesFastest.isNotEmpty) {
       logger.debug('AnnualReportPage', '  whoRepliesFastest 前3条数据:');
@@ -2483,18 +2553,19 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
     if ((whoRepliesFastest == null || whoRepliesFastest.isEmpty) &&
         (myFastestReplies == null || myFastestReplies.isEmpty)) {
       logger.warning('AnnualReportPage', '命中"暂无数据"判定逻辑！');
-      logger.warning('AnnualReportPage', '  原因: whoRepliesFastest=${whoRepliesFastest == null ? "null" : "empty"}, myFastestReplies=${myFastestReplies == null ? "null" : "empty"}');
+      logger.warning(
+        'AnnualReportPage',
+        '  原因: whoRepliesFastest=${whoRepliesFastest == null ? "null" : "empty"}, myFastestReplies=${myFastestReplies == null ? "null" : "empty"}',
+      );
       return Container(
-        decoration: BoxDecoration(
-          gradient: WarmTheme.getPageGradients()[9],
-        ),
+        decoration: BoxDecoration(gradient: WarmTheme.getPageGradients()[9]),
         child: const Center(child: Text('暂无数据')),
       );
     }
 
     logger.info('AnnualReportPage', ' 数据检查通过，开始构建响应速度页面');
     final gradients = WarmTheme.getPageGradients();
-    
+
     return Stack(
       children: [
         Container(
@@ -2512,174 +2583,184 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
           ),
         ),
         Container(
-      child: SafeArea(
-        child: Center(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final height = constraints.maxHeight;
-              final width = constraints.maxWidth;
-              final titleSize = height > 700 ? 36.0 : 32.0;
-              final nameSize = height > 700 ? 38.0 : 34.0;
-              final textSize = height > 700 ? 22.0 : 20.0;
-              
-              // 获取第一名
-              final fastestPerson = whoRepliesFastest != null && whoRepliesFastest.isNotEmpty
-                  ? whoRepliesFastest.first
-                  : null;
-              final myFastest = myFastestReplies != null && myFastestReplies.isNotEmpty
-                  ? myFastestReplies.first
-                  : null;
-              
-              return Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: width * 0.1,
-                  vertical: height * 0.05,
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    FadeInText(
-                      text: AnnualReportTexts.responseTitle,
-                      style: TextStyle(
-                        fontSize: titleSize,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF07C160),
-                        letterSpacing: 1,
-                      ),
-                      textAlign: TextAlign.center,
+          child: SafeArea(
+            child: Center(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final height = constraints.maxHeight;
+                  final width = constraints.maxWidth;
+                  final titleSize = height > 700 ? 36.0 : 32.0;
+                  final nameSize = height > 700 ? 38.0 : 34.0;
+                  final textSize = height > 700 ? 22.0 : 20.0;
+
+                  // 获取第一名
+                  final fastestPerson =
+                      whoRepliesFastest != null && whoRepliesFastest.isNotEmpty
+                      ? whoRepliesFastest.first
+                      : null;
+                  final myFastest =
+                      myFastestReplies != null && myFastestReplies.isNotEmpty
+                      ? myFastestReplies.first
+                      : null;
+
+                  return Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: width * 0.1,
+                      vertical: height * 0.05,
                     ),
-                    SizedBox(height: height * 0.015),
-                    FadeInText(
-                      text: AnnualReportTexts.responseSubtitle,
-                      delay: const Duration(milliseconds: 200),
-                      style: TextStyle(
-                        fontSize: titleSize - 14,
-                        color: Colors.grey[500],
-                        letterSpacing: 0.5,
-                      ),
-                      textAlign: TextAlign.center,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        FadeInText(
+                          text: AnnualReportTexts.responseTitle,
+                          style: TextStyle(
+                            fontSize: titleSize,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF07C160),
+                            letterSpacing: 1,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        SizedBox(height: height * 0.015),
+                        FadeInText(
+                          text: AnnualReportTexts.responseSubtitle,
+                          delay: const Duration(milliseconds: 200),
+                          style: TextStyle(
+                            fontSize: titleSize - 14,
+                            color: Colors.grey[500],
+                            letterSpacing: 0.5,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        SizedBox(height: height * 0.04),
+
+                        // 谁回复我最快
+                        if (fastestPerson != null) ...[
+                          FadeInText(
+                            text: AnnualReportTexts.responseWhoRepliesYou,
+                            delay: const Duration(milliseconds: 300),
+                            style: TextStyle(
+                              fontSize: textSize - 2,
+                              color: Colors.grey[600],
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: height * 0.02),
+                          SlideInCard(
+                            delay: const Duration(milliseconds: 600),
+                            child: _buildNameWithBlur(
+                              fastestPerson['displayName'] as String,
+                              TextStyle(
+                                fontSize: nameSize,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF07C160),
+                              ),
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                            ),
+                          ),
+                          SizedBox(height: height * 0.015),
+                          FadeInText(
+                            text: _formatResponseTime(
+                              fastestPerson['avgResponseTimeMinutes'] as num,
+                            ),
+                            delay: const Duration(milliseconds: 800),
+                            style: TextStyle(
+                              fontSize: textSize - 4,
+                              color: const Color(0xFF07C160),
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: height * 0.012),
+                          Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: width * 0.08,
+                            ),
+                            child: FadeInText(
+                              text: AnnualReportTexts.responseClosing1,
+                              delay: const Duration(milliseconds: 900),
+                              style: TextStyle(
+                                fontSize: textSize - 6,
+                                color: Colors.grey[600],
+                                fontStyle: FontStyle.italic,
+                                height: 1.6,
+                                letterSpacing: 0.3,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ],
+
+                        if (fastestPerson != null && myFastest != null)
+                          SizedBox(height: height * 0.05),
+
+                        // 我回复最快的人
+                        if (myFastest != null) ...[
+                          FadeInText(
+                            text: AnnualReportTexts.responseYouReplyWho,
+                            delay: const Duration(milliseconds: 1000),
+                            style: TextStyle(
+                              fontSize: textSize - 2,
+                              color: Colors.grey[600],
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: height * 0.02),
+                          SlideInCard(
+                            delay: const Duration(milliseconds: 1300),
+                            child: _buildNameWithBlur(
+                              myFastest['displayName'] as String,
+                              TextStyle(
+                                fontSize: nameSize,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF07C160),
+                              ),
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                            ),
+                          ),
+                          SizedBox(height: height * 0.015),
+                          FadeInText(
+                            text: _formatResponseTime(
+                              myFastest['avgResponseTimeMinutes'] as num,
+                            ),
+                            delay: const Duration(milliseconds: 1500),
+                            style: TextStyle(
+                              fontSize: textSize - 4,
+                              color: const Color(0xFF07C160),
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: height * 0.012),
+                          Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: width * 0.08,
+                            ),
+                            child: FadeInText(
+                              text: AnnualReportTexts.responseClosing2,
+                              delay: const Duration(milliseconds: 1600),
+                              style: TextStyle(
+                                fontSize: textSize - 6,
+                                color: Colors.grey[600],
+                                fontStyle: FontStyle.italic,
+                                height: 1.6,
+                                letterSpacing: 0.3,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                    SizedBox(height: height * 0.04),
-                    
-                    // 谁回复我最快
-                    if (fastestPerson != null) ...[
-                      FadeInText(
-                        text: AnnualReportTexts.responseWhoRepliesYou,
-                        delay: const Duration(milliseconds: 300),
-                        style: TextStyle(
-                          fontSize: textSize - 2,
-                          color: Colors.grey[600],
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      SizedBox(height: height * 0.02),
-                      SlideInCard(
-                        delay: const Duration(milliseconds: 600),
-                        child: _buildNameWithBlur(
-                          fastestPerson['displayName'] as String,
-                          TextStyle(
-                            fontSize: nameSize,
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF07C160),
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                        ),
-                      ),
-                      SizedBox(height: height * 0.015),
-                      FadeInText(
-                        text: _formatResponseTime(fastestPerson['avgResponseTimeMinutes'] as num),
-                        delay: const Duration(milliseconds: 800),
-                        style: TextStyle(
-                          fontSize: textSize - 4,
-                          color: const Color(0xFF07C160),
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      SizedBox(height: height * 0.012),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: width * 0.08),
-                        child: FadeInText(
-                          text: AnnualReportTexts.responseClosing1,
-                          delay: const Duration(milliseconds: 900),
-                          style: TextStyle(
-                            fontSize: textSize - 6,
-                            color: Colors.grey[600],
-                            fontStyle: FontStyle.italic,
-                            height: 1.6,
-                            letterSpacing: 0.3,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
-                    
-                    if (fastestPerson != null && myFastest != null)
-                      SizedBox(height: height * 0.05),
-                    
-                    // 我回复最快的人
-                    if (myFastest != null) ...[
-                      FadeInText(
-                        text: AnnualReportTexts.responseYouReplyWho,
-                        delay: const Duration(milliseconds: 1000),
-                        style: TextStyle(
-                          fontSize: textSize - 2,
-                          color: Colors.grey[600],
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      SizedBox(height: height * 0.02),
-                      SlideInCard(
-                        delay: const Duration(milliseconds: 1300),
-                        child: _buildNameWithBlur(
-                          myFastest['displayName'] as String,
-                          TextStyle(
-                            fontSize: nameSize,
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF07C160),
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                        ),
-                      ),
-                      SizedBox(height: height * 0.015),
-                      FadeInText(
-                        text: _formatResponseTime(myFastest['avgResponseTimeMinutes'] as num),
-                        delay: const Duration(milliseconds: 1500),
-                        style: TextStyle(
-                          fontSize: textSize - 4,
-                          color: const Color(0xFF07C160),
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      SizedBox(height: height * 0.012),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: width * 0.08),
-                        child: FadeInText(
-                          text: AnnualReportTexts.responseClosing2,
-                          delay: const Duration(milliseconds: 1600),
-                          style: TextStyle(
-                            fontSize: textSize - 6,
-                            color: Colors.grey[600],
-                            fontStyle: FontStyle.italic,
-                            height: 1.6,
-                            letterSpacing: 0.3,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              );
-            },
+                  );
+                },
+              ),
+            ),
           ),
         ),
-      ),
-    ),
       ],
     );
   }
@@ -2698,7 +2779,8 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
   // 曾经的好朋友页
   Widget _buildFormerFriendsPage() {
     final List<dynamic>? formerFriendsJson = _reportData?['formerFriends'];
-    final Map<String, dynamic>? stats = _reportData?['formerFriendsStats'] as Map<String, dynamic>?;
+    final Map<String, dynamic>? stats =
+        _reportData?['formerFriendsStats'] as Map<String, dynamic>?;
 
     // 检查是否有数据
     if (formerFriendsJson == null || formerFriendsJson.isEmpty) {
@@ -2726,9 +2808,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
       }
 
       return Container(
-        decoration: BoxDecoration(
-          gradient: WarmTheme.getPageGradients()[10],
-        ),
+        decoration: BoxDecoration(gradient: WarmTheme.getPageGradients()[10]),
         child: SafeArea(
           child: Center(
             child: Padding(
@@ -2773,8 +2853,12 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
     // 只显示第一个曾经的好朋友
     final formerFriendData = formerFriendsJson.first as Map<String, dynamic>;
     final displayName = formerFriendData['displayName'] as String;
-    final activeStartDate = DateTime.parse(formerFriendData['activeStartDate'] as String);
-    final activeEndDate = DateTime.parse(formerFriendData['activeEndDate'] as String);
+    final activeStartDate = DateTime.parse(
+      formerFriendData['activeStartDate'] as String,
+    );
+    final activeEndDate = DateTime.parse(
+      formerFriendData['activeEndDate'] as String,
+    );
     final activeDays = formerFriendData['activeDays'] as int;
     final activeDaysCount = formerFriendData['activeDaysCount'] as int;
     final activeMessageCount = formerFriendData['activeMessageCount'] as int;
@@ -2784,11 +2868,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
 
     return Stack(
       children: [
-        Container(
-          decoration: BoxDecoration(
-            gradient: gradients[10],
-          ),
-        ),
+        Container(decoration: BoxDecoration(gradient: gradients[10])),
         const Positioned.fill(
           child: FloatingDots(
             dotCount: 18,
@@ -2845,7 +2925,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                             ),
                             textAlign: TextAlign.center,
                           ),
-                          
+
                           // 好友名字
                           SlideInCard(
                             delay: const Duration(milliseconds: 300),
@@ -2861,7 +2941,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                               maxLines: 1,
                             ),
                           ),
-                          
+
                           // 第一句后缀：聊天的时候吗
                           FadeInText(
                             text: '聊天的时候吗',
@@ -2879,7 +2959,8 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
 
                           // 第二句：时间范围
                           FadeInRichText(
-                            text: '从 ${_formatDate(activeStartDate)}${AnnualReportTexts.formerFriendToDate}${_formatDate(activeEndDate)}',
+                            text:
+                                '从 ${_formatDate(activeStartDate)}${AnnualReportTexts.formerFriendToDate}${_formatDate(activeEndDate)}',
                             baseStyle: TextStyle(
                               fontSize: bodySize,
                               color: Colors.black87,
@@ -2907,7 +2988,8 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
 
                           // 第三句：那XX天里，你们聊了XX天
                           FadeInRichText(
-                            text: '${AnnualReportTexts.formerFriendInDaysPrefix}$activeDays${AnnualReportTexts.formerFriendInDaysSuffix}$activeDaysCount${AnnualReportTexts.formerFriendInDaysCount}',
+                            text:
+                                '${AnnualReportTexts.formerFriendInDaysPrefix}$activeDays${AnnualReportTexts.formerFriendInDaysSuffix}$activeDaysCount${AnnualReportTexts.formerFriendInDaysCount}',
                             baseStyle: TextStyle(
                               fontSize: bodySize,
                               color: Colors.black87,
@@ -2935,7 +3017,8 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
 
                           // 第四句：一共XX条消息
                           FadeInRichText(
-                            text: '${AnnualReportTexts.formerFriendTotalPrefix}$activeMessageCount${AnnualReportTexts.formerFriendTotalSuffix}',
+                            text:
+                                '${AnnualReportTexts.formerFriendTotalPrefix}$activeMessageCount${AnnualReportTexts.formerFriendTotalSuffix}',
                             baseStyle: TextStyle(
                               fontSize: bodySize,
                               color: Colors.black87,
@@ -2957,7 +3040,8 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
 
                           // 第五句：但现在已经XX天没有联系了
                           FadeInRichText(
-                            text: '${AnnualReportTexts.formerFriendButNow}${AnnualReportTexts.formerFriendNoContactPrefix}$daysSinceActive${AnnualReportTexts.formerFriendNoContactSuffix}',
+                            text:
+                                '${AnnualReportTexts.formerFriendButNow}${AnnualReportTexts.formerFriendNoContactPrefix}$daysSinceActive${AnnualReportTexts.formerFriendNoContactSuffix}',
                             baseStyle: TextStyle(
                               fontSize: bodySize,
                               color: Colors.black87,
@@ -3015,7 +3099,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
     final totalMessages = _getTotalMessages();
     final totalFriends = _getTotalFriends();
     final gradients = WarmTheme.getPageGradients();
-    
+
     return Stack(
       children: [
         Container(
@@ -3033,167 +3117,165 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
           ),
         ),
         Container(
-      child: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final height = constraints.maxHeight;
-              final width = constraints.maxWidth;
-              final titleSize = height > 700 ? 32.0 : 28.0;
-            final numberSize = height > 700 ? 56.0 : 48.0;
-            final textSize = height > 700 ? 17.0 : 15.0;
-            final smallSize = height > 700 ? 14.0 : 13.0;
-            
-            return Stack(
-              children: [
-                // 顶部标题
-                Positioned(
-                  left: width * 0.08,
-                  top: height * 0.1,
-                  right: width * 0.08,
-          child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              FadeInText(
-                      text: '$yearText${AnnualReportTexts.endingTitleSuffix}',
-                      style: TextStyle(
-                        fontSize: titleSize,
-                  fontWeight: FontWeight.bold,
-                        color: const Color(0xFF07C160),
-                        letterSpacing: 2,
-                ),
-              ),
-                      SizedBox(height: 8),
-              FadeInText(
-                        text: AnnualReportTexts.endingSubtitle,
-                      delay: const Duration(milliseconds: 300),
-                      style: TextStyle(
-                        fontSize: textSize,
-                          color: Colors.grey[500],
-                          letterSpacing: 0.5,
-                        ),
+          child: SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final height = constraints.maxHeight;
+                final width = constraints.maxWidth;
+                final titleSize = height > 700 ? 32.0 : 28.0;
+                final numberSize = height > 700 ? 56.0 : 48.0;
+                final textSize = height > 700 ? 17.0 : 15.0;
+                final smallSize = height > 700 ? 14.0 : 13.0;
+
+                return Stack(
+                  children: [
+                    // 顶部标题
+                    Positioned(
+                      left: width * 0.08,
+                      top: height * 0.1,
+                      right: width * 0.08,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          FadeInText(
+                            text:
+                                '$yearText${AnnualReportTexts.endingTitleSuffix}',
+                            style: TextStyle(
+                              fontSize: titleSize,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFF07C160),
+                              letterSpacing: 2,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          FadeInText(
+                            text: AnnualReportTexts.endingSubtitle,
+                            delay: const Duration(milliseconds: 300),
+                            style: TextStyle(
+                              fontSize: textSize,
+                              color: Colors.grey[500],
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-                
-                // 中间数据区域
-                Positioned(
-                  left: width * 0.12,
-                  top: height * 0.32,
-                  child: SlideInCard(
-                    delay: const Duration(milliseconds: 600),
-                        child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                        AnimatedNumberDisplay(
-                          value: totalMessages.toDouble(),
-                          suffix: '',
-                              style: TextStyle(
-                            fontSize: numberSize,
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF07C160),
-                            height: 1.0,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                            Text(
-                          AnnualReportTexts.endingMessagesUnit,
-                              style: TextStyle(
-                            fontSize: textSize - 2,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
                     ),
-                  ),
-                ),
-                
-                Positioned(
-                  right: width * 0.12,
-                  top: height * 0.48,
-                  child: SlideInCard(
-                    delay: const Duration(milliseconds: 800),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        AnimatedNumberDisplay(
-                          value: totalFriends.toDouble(),
-                          suffix: '',
-                          style: TextStyle(
-                            fontSize: numberSize * 0.7,
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF07C160),
-                            height: 1.0,
-                          ),
-                        ),
-                        SizedBox(height: 4),
-                            Text(
-                          AnnualReportTexts.endingFriendsUnit,
+
+                    // 中间数据区域
+                    Positioned(
+                      left: width * 0.12,
+                      top: height * 0.32,
+                      child: SlideInCard(
+                        delay: const Duration(milliseconds: 600),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            AnimatedNumberDisplay(
+                              value: totalMessages.toDouble(),
+                              suffix: '',
                               style: TextStyle(
-                            fontSize: textSize - 3,
-                            color: Colors.grey[600],
-                          ),
+                                fontSize: numberSize,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF07C160),
+                                height: 1.0,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              AnnualReportTexts.endingMessagesUnit,
+                              style: TextStyle(
+                                fontSize: textSize - 2,
+                                color: Colors.grey[600],
+                              ),
                             ),
                           ],
                         ),
                       ),
                     ),
-                
-                // 中间分隔线
-                Positioned(
-                  left: width * 0.3,
-                  right: width * 0.3,
-                  top: height * 0.58,
-                  child: SlideInCard(
-                    delay: const Duration(milliseconds: 1000),
-                    child: Container(
-                      height: 1,
-                      color: Colors.grey[300],
+
+                    Positioned(
+                      right: width * 0.12,
+                      top: height * 0.48,
+                      child: SlideInCard(
+                        delay: const Duration(milliseconds: 800),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            AnimatedNumberDisplay(
+                              value: totalFriends.toDouble(),
+                              suffix: '',
+                              style: TextStyle(
+                                fontSize: numberSize * 0.7,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF07C160),
+                                height: 1.0,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              AnnualReportTexts.endingFriendsUnit,
+                              style: TextStyle(
+                                fontSize: textSize - 3,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-                
-                // 底部温暖寄语
-                Positioned(
-                  left: width * 0.1,
-                  right: width * 0.1,
-                  bottom: height * 0.08,
-                  child: Column(
-                    children: [
-                    FadeInText(
-                        text: AnnualReportTexts.endingPoem1,
-                        delay: const Duration(milliseconds: 1200),
-                      style: TextStyle(
-                          fontSize: textSize,
-                          color: Colors.grey[700],
-                          height: 1.9,
-                          letterSpacing: 0.5,
-                        ),
-                        textAlign: TextAlign.center,
+
+                    // 中间分隔线
+                    Positioned(
+                      left: width * 0.3,
+                      right: width * 0.3,
+                      top: height * 0.58,
+                      child: SlideInCard(
+                        delay: const Duration(milliseconds: 1000),
+                        child: Container(height: 1, color: Colors.grey[300]),
                       ),
-                      SizedBox(height: height * 0.04),
-                    FadeInText(
-                        text: AnnualReportTexts.endingPoem2,
-                        delay: const Duration(milliseconds: 1400),
-                      style: TextStyle(
-                          fontSize: smallSize,
-                          color: Colors.grey[500],
-                          fontStyle: FontStyle.italic,
-                          height: 2.0,
-                          letterSpacing: 0.3,
-                        ),
-                        textAlign: TextAlign.center,
+                    ),
+
+                    // 底部温暖寄语
+                    Positioned(
+                      left: width * 0.1,
+                      right: width * 0.1,
+                      bottom: height * 0.08,
+                      child: Column(
+                        children: [
+                          FadeInText(
+                            text: AnnualReportTexts.endingPoem1,
+                            delay: const Duration(milliseconds: 1200),
+                            style: TextStyle(
+                              fontSize: textSize,
+                              color: Colors.grey[700],
+                              height: 1.9,
+                              letterSpacing: 0.5,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: height * 0.04),
+                          FadeInText(
+                            text: AnnualReportTexts.endingPoem2,
+                            delay: const Duration(milliseconds: 1400),
+                            style: TextStyle(
+                              fontSize: smallSize,
+                              color: Colors.grey[500],
+                              fontStyle: FontStyle.italic,
+                              height: 2.0,
+                              letterSpacing: 0.3,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: height * 0.02),
+                        ],
                       ),
-                      SizedBox(height: height * 0.02),
-                    ],
-                  ),
-                ),
-              ],
-              );
-            },
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
         ),
-      ),
-    ),
       ],
     );
   }
@@ -3213,7 +3295,10 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('导出格式：', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text(
+                  '导出格式：',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 8),
                 RadioListTile<bool>(
                   title: const Text('合并为一张长图'),
@@ -3236,7 +3321,10 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
                 const SizedBox(height: 16),
                 const Divider(),
                 const SizedBox(height: 16),
-                const Text('联系人信息显示：', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text(
+                  '联系人信息显示：',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 8),
                 RadioListTile<String>(
                   title: const Text('显示完整信息'),
@@ -3357,7 +3445,9 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
 
         // 截取当前页面
         try {
-          final boundary = _pageViewKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+          final boundary =
+              _pageViewKey.currentContext?.findRenderObject()
+                  as RenderRepaintBoundary?;
           if (boundary != null) {
             // 标记需要重绘
             boundary.markNeedsPaint();
@@ -3368,13 +3458,14 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
 
             // 执行截图
             final image = await boundary.toImage(pixelRatio: 3.0);
-            final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+            final byteData = await image.toByteData(
+              format: ui.ImageByteFormat.png,
+            );
             if (byteData != null) {
               images.add(byteData.buffer.asUint8List());
             }
           }
-        } catch (e) {
-        }
+        } catch (e) {}
       }
 
       // 恢复到原始页面
@@ -3393,7 +3484,8 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
           final file = File(filePath);
           await file.writeAsBytes(images[i]);
         }
-        resultMessage = '导出成功！\n保存位置：${exportDir.path}\n共生成 ${images.length} 张图片';
+        resultMessage =
+            '导出成功！\n保存位置：${exportDir.path}\n共生成 ${images.length} 张图片';
       } else {
         // 合并为一张长图
         final combinedImage = await compute(_combineImagesInBackground, images);
@@ -3423,9 +3515,9 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('导出失败：$e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('导出失败：$e')));
       }
     } finally {
       if (mounted) {
@@ -3438,9 +3530,10 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
     }
   }
 
-
   // 拼接多张图片为一张长图（后台线程执行）
-  static Future<Uint8List> _combineImagesInBackground(List<Uint8List> images) async {
+  static Future<Uint8List> _combineImagesInBackground(
+    List<Uint8List> images,
+  ) async {
     final decodedImages = <img.Image>[];
     int totalHeight = 0;
     int maxWidth = 0;
@@ -3459,7 +3552,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
 
     // 创建新图片
     final combined = img.Image(width: maxWidth, height: totalHeight);
-    
+
     // 填充白色背景
     img.fill(combined, color: img.ColorRgb8(255, 255, 255));
 
@@ -3474,9 +3567,13 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
     return Uint8List.fromList(img.encodePng(combined));
   }
 
-
   // 处理名字隐藏 - 使用高斯模糊覆盖
-  Widget _buildNameWithBlur(String name, TextStyle style, {TextAlign? textAlign, int? maxLines}) {
+  Widget _buildNameWithBlur(
+    String name,
+    TextStyle style, {
+    TextAlign? textAlign,
+    int? maxLines,
+  }) {
     if (_nameHideMode == 'none') {
       return Text(
         name,
@@ -3494,36 +3591,27 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
       if (characters.isEmpty) {
         return Text('', style: style);
       }
-      
+
       final firstChar = characters.first;
-      final restChars = characters.length > 1 
-          ? characters.skip(1).toString() 
+      final restChars = characters.length > 1
+          ? characters.skip(1).toString()
           : '';
-      
+
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           // 第一个字符不模糊
-          Text(
-            firstChar,
-            style: style,
-          ),
+          Text(firstChar, style: style),
           // 后面的字模糊
           if (restChars.isNotEmpty)
             Stack(
               children: [
-                Text(
-                  restChars,
-                  style: style,
-                ),
+                Text(restChars, style: style),
                 Positioned.fill(
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(20),
                     child: BackdropFilter(
-                      filter: ui.ImageFilter.blur(
-                        sigmaX: 15.0,
-                        sigmaY: 15.0,
-                      ),
+                      filter: ui.ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
                       child: Container(
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.3),
@@ -3553,10 +3641,7 @@ class _AnnualReportDisplayPageState extends State<AnnualReportDisplayPage> {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(20),
             child: BackdropFilter(
-              filter: ui.ImageFilter.blur(
-                sigmaX: 15.0,
-                sigmaY: 15.0,
-              ),
+              filter: ui.ImageFilter.blur(sigmaX: 15.0, sigmaY: 15.0),
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.3),

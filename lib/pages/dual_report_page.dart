@@ -27,9 +27,9 @@ class _DualReportPageState extends State<DualReportPage> {
     final appState = Provider.of<AppState>(context, listen: false);
     final databaseService = appState.databaseService;
     final dualReportService = DualReportService(databaseService);
-    
+
     if (!mounted) return;
-    
+
     // 打开好友选择页面
     final selectedFriend = await Navigator.push<Map<String, dynamic>>(
       context,
@@ -40,13 +40,13 @@ class _DualReportPageState extends State<DualReportPage> {
         ),
       ),
     );
-    
+
     if (selectedFriend == null) {
       // 用户取消选择，返回上一页
       if (mounted) Navigator.pop(context);
       return;
     }
-    
+
     // 生成完整的双人报告
     if (!mounted) return;
     await _generateReport(
@@ -65,9 +65,9 @@ class _DualReportPageState extends State<DualReportPage> {
         friendUsername: friendUsername,
         filterYear: null,
       );
-      
+
       if (!mounted) return;
-      
+
       // 跳转到报告展示页面
       Navigator.pushReplacement(
         context,
@@ -77,11 +77,11 @@ class _DualReportPageState extends State<DualReportPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      
+
       // 显示错误信息
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('生成报告失败: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('生成报告失败: $e')));
       Navigator.pop(context);
     }
   }
@@ -98,4 +98,3 @@ class _DualReportPageState extends State<DualReportPage> {
     );
   }
 }
-

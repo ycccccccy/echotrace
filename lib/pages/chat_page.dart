@@ -41,7 +41,6 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   late AnimationController _searchAnimationController;
   late Animation<double> _searchAnimation;
 
-
   @override
   void initState() {
     super.initState();
@@ -86,8 +85,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           final username = session.username.toLowerCase();
           final summary = session.displaySummary.toLowerCase();
           return displayName.contains(query) ||
-                 username.contains(query) ||
-                 summary.contains(query);
+              username.contains(query) ||
+              summary.contains(query);
         }).toList();
         logger.debug('ChatPage', '搜索结果: 找到 ${_filteredSessions.length} 个匹配的会话');
       }
@@ -159,7 +158,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         if (session.username.startsWith('medianote')) return false;
         if (session.username.startsWith('floatbottle')) return false;
         // 只保留个人聊天(wxid_)和群聊(@chatroom)
-        return session.username.contains('wxid_') || session.username.contains('@chatroom');
+        return session.username.contains('wxid_') ||
+            session.username.contains('@chatroom');
       }).toList();
 
       if (mounted) {
@@ -190,8 +190,11 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   }
 
   Future<void> _loadMessages(ChatSession session) async {
-    await logger.info('ChatPage', '开始加载会话消息: ${session.username} (${session.displayName ?? "无显示名"})');
-    
+    await logger.info(
+      'ChatPage',
+      '开始加载会话消息: ${session.username} (${session.displayName ?? "无显示名"})',
+    );
+
     // 立即切换选中状态，不等待加载，避免卡顿
     setState(() {
       _selectedSession = session;
@@ -207,29 +210,39 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     try {
       final appState = context.read<AppState>();
       const initialLoadLimit = 20; // 初次只加载20条消息
-      
+
       await logger.info('ChatPage', '查询消息，limit=$initialLoadLimit, offset=0');
       final messages = await appState.databaseService.getMessages(
         session.username,
         limit: initialLoadLimit,
         offset: 0,
       );
-      
+
       await logger.info('ChatPage', '获取到 ${messages.length} 条消息');
 
       // 如果是群聊，批量查询所有发送者的真实姓名
       if (session.isGroup && messages.isNotEmpty) {
         await logger.info('ChatPage', '这是群聊，开始查询发送者显示名');
         final senderUsernames = messages
-            .where((m) => m.senderUsername != null && m.senderUsername!.isNotEmpty)
+            .where(
+              (m) => m.senderUsername != null && m.senderUsername!.isNotEmpty,
+            )
             .map((m) => m.senderUsername!)
             .toSet()
             .toList();
 
         if (senderUsernames.isNotEmpty) {
-          await logger.info('ChatPage', '查询 ${senderUsernames.length} 个发送者的显示名');
-          _senderDisplayNames = await appState.databaseService.getDisplayNames(senderUsernames);
-          await logger.info('ChatPage', '获取到 ${_senderDisplayNames.length} 个显示名');
+          await logger.info(
+            'ChatPage',
+            '查询 ${senderUsernames.length} 个发送者的显示名',
+          );
+          _senderDisplayNames = await appState.databaseService.getDisplayNames(
+            senderUsernames,
+          );
+          await logger.info(
+            'ChatPage',
+            '获取到 ${_senderDisplayNames.length} 个显示名',
+          );
         }
       }
 
@@ -243,9 +256,13 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
 
         // 自动滚动到底部（最新消息）
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _scrollController.hasClients && _selectedSession?.username == session.username) {
+          if (mounted &&
+              _scrollController.hasClients &&
+              _selectedSession?.username == session.username) {
             try {
-              _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+              _scrollController.jumpTo(
+                _scrollController.position.maxScrollExtent,
+              );
             } catch (e) {
               // 忽略滚动错误
             }
@@ -262,7 +279,10 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                 _selectedSession?.username == session.username &&
                 !_isLoadingMoreMessages &&
                 _lastInitialLoadTime != null &&
-                DateTime.now().difference(_lastInitialLoadTime!).inMilliseconds < 1000) {
+                DateTime.now()
+                        .difference(_lastInitialLoadTime!)
+                        .inMilliseconds <
+                    1000) {
               _loadMoreMessages();
             }
           });
@@ -273,15 +293,17 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         setState(() {
           _isLoadingMessages = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('加载消息失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('加载消息失败: $e')));
       }
     }
   }
 
   Future<void> _loadMoreMessages() async {
-    if (_isLoadingMoreMessages || !_hasMoreMessages || _selectedSession == null) {
+    if (_isLoadingMoreMessages ||
+        !_hasMoreMessages ||
+        _selectedSession == null) {
       return;
     }
 
@@ -305,22 +327,26 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         limit: 50,
         offset: _currentOffset,
       );
-      
+
       // 如果是群聊，批量查询新加载消息的发送者姓名
       if (_selectedSession!.isGroup && moreMessages.isNotEmpty) {
         final newSenderUsernames = moreMessages
-            .where((m) => m.senderUsername != null && m.senderUsername!.isNotEmpty)
+            .where(
+              (m) => m.senderUsername != null && m.senderUsername!.isNotEmpty,
+            )
             .map((m) => m.senderUsername!)
             .toSet()
             .where((username) => !_senderDisplayNames.containsKey(username))
             .toList();
-        
+
         if (newSenderUsernames.isNotEmpty) {
-          final newNames = await appState.databaseService.getDisplayNames(newSenderUsernames);
+          final newNames = await appState.databaseService.getDisplayNames(
+            newSenderUsernames,
+          );
           _senderDisplayNames.addAll(newNames);
         }
       }
-      
+
       if (mounted && _selectedSession?.username == currentSessionUsername) {
         setState(() {
           _messages = [...moreMessages.reversed.toList(), ..._messages];
@@ -331,14 +357,15 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
 
         // 维持可视位置不跳动
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && 
-              _scrollController.hasClients && 
+          if (mounted &&
+              _scrollController.hasClients &&
               _selectedSession?.username == currentSessionUsername) {
             try {
               final newMaxExtent = _scrollController.position.maxScrollExtent;
               final delta = newMaxExtent - oldMaxExtent;
               final target = oldPixels + delta;
-              if (target >= 0 && target <= _scrollController.position.maxScrollExtent) {
+              if (target >= 0 &&
+                  target <= _scrollController.position.maxScrollExtent) {
                 _scrollController.jumpTo(target);
               }
             } catch (e) {
@@ -362,19 +389,21 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       return message.isSend == 1;
     }
     // Fallback判断
-    final myWxid = context.read<AppState>().databaseService.currentAccountWxid ?? '';
+    final myWxid =
+        context.read<AppState>().databaseService.currentAccountWxid ?? '';
     return message.source.isEmpty || message.source == myWxid;
   }
 
   /// 获取会话显示名称（如果是自己的账号显示"我"）
   String _getSessionDisplayName(ChatSession session) {
-    final myWxid = context.read<AppState>().databaseService.currentAccountWxid ?? '';
-    
+    final myWxid =
+        context.read<AppState>().databaseService.currentAccountWxid ?? '';
+
     // 如果会话用户名是当前账号，显示"我"
     if (session.username == myWxid) {
       return '我';
     }
-    
+
     return session.displayName ?? session.username;
   }
 
@@ -383,32 +412,33 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     if (_selectedSession == null || !_selectedSession!.isGroup) {
       return null;
     }
-    
+
     // 如果是自己发的消息，不显示名称
     if (_isMessageFromMe(message)) {
       return null;
     }
-    
-    final myWxid = context.read<AppState>().databaseService.currentAccountWxid ?? '';
-    
+
+    final myWxid =
+        context.read<AppState>().databaseService.currentAccountWxid ?? '';
+
     // 获取发送者username
     if (message.senderUsername != null && message.senderUsername!.isNotEmpty) {
       // 如果发送者是当前账号（虽然理论上不会走到这里）
       if (message.senderUsername == myWxid) {
         return '我';
       }
-      
+
       // 从缓存中获取显示名称
       String? displayName = _senderDisplayNames[message.senderUsername];
-      
+
       // 如果没查到，显示默认提示而不是wxid
       if (displayName == null || displayName.isEmpty) {
         return '群成员';
       }
-      
+
       return displayName;
     }
-    
+
     return '群成员';
   }
 
@@ -437,7 +467,9 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                 decoration: BoxDecoration(
                   border: Border(
                     bottom: BorderSide(
-                      color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outline.withOpacity(0.2),
                     ),
                   ),
                 ),
@@ -471,12 +503,17 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                 sizeFactor: _searchAnimation,
                 axisAlignment: -1.0,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.grey.shade50,
                     border: Border(
                       bottom: BorderSide(
-                        color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.outline.withOpacity(0.1),
                       ),
                     ),
                   ),
@@ -500,7 +537,10 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                       ),
                       filled: true,
                       fillColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       isDense: true,
                     ),
                     style: Theme.of(context).textTheme.bodyMedium,
@@ -524,64 +564,79 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                             const SizedBox(height: 16),
                             Text(
                               '数据库未连接',
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                                fontWeight: FontWeight.bold,
-                              ),
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface.withOpacity(0.7),
+                                    fontWeight: FontWeight.bold,
+                                  ),
                             ),
                             const SizedBox(height: 8),
                             Text(
                               '请先在「数据管理」页面\n解密数据库文件',
                               textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-                              ),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface.withOpacity(0.5),
+                                  ),
                             ),
                           ],
                         ),
                       );
                     }
-                    
+
                     return _isLoadingSessions
                         ? ShimmerLoading(
                             isLoading: true,
                             child: ListView.builder(
                               itemCount: 6,
                               physics: const NeverScrollableScrollPhysics(),
-                              itemBuilder: (context, index) => const ListItemShimmer(),
+                              itemBuilder: (context, index) =>
+                                  const ListItemShimmer(),
                             ),
                           )
                         : _filteredSessions.isEmpty
-                            ? Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      _isSearching ? Icons.search_off : Icons.chat_bubble_outline,
-                                      size: 64,
-                                      color: Theme.of(context).colorScheme.outline,
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Text(
-                                      _isSearching ? '未找到匹配的会话' : '暂无会话',
-                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-                                      ),
-                                    ),
-                                  ],
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  _isSearching
+                                      ? Icons.search_off
+                                      : Icons.chat_bubble_outline,
+                                  size: 64,
+                                  color: Theme.of(context).colorScheme.outline,
                                 ),
-                              )
-                            : ListView.builder(
-                                itemCount: _filteredSessions.length,
-                                itemBuilder: (context, index) {
-                                  final session = _filteredSessions[index];
-                                  return ChatSessionItem(
-                                    session: session,
-                                    isSelected: _selectedSession?.username == session.username,
-                                    onTap: () => _loadMessages(session),
-                                  );
-                                },
+                                const SizedBox(height: 16),
+                                Text(
+                                  _isSearching ? '未找到匹配的会话' : '暂无会话',
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                            .withOpacity(0.5),
+                                      ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: _filteredSessions.length,
+                            itemBuilder: (context, index) {
+                              final session = _filteredSessions[index];
+                              return ChatSessionItem(
+                                session: session,
+                                isSelected:
+                                    _selectedSession?.username ==
+                                    session.username,
+                                onTap: () => _loadMessages(session),
                               );
+                            },
+                          );
                   },
                 ),
               ),
@@ -610,9 +665,14 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                       child: Row(
                         children: [
                           CircleAvatar(
-                            backgroundColor: Theme.of(context).colorScheme.primary,
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary,
                             child: Text(
-                              StringUtils.getFirstChar(_selectedSession!.displayName ?? _selectedSession!.username),
+                              StringUtils.getFirstChar(
+                                _selectedSession!.displayName ??
+                                    _selectedSession!.username,
+                              ),
                               style: const TextStyle(color: Colors.white),
                             ),
                           ),
@@ -623,15 +683,18 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                               children: [
                                 Text(
                                   _getSessionDisplayName(_selectedSession!),
-                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                  style: Theme.of(context).textTheme.titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w600),
                                 ),
                                 Text(
                                   _selectedSession!.typeDescription,
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                                  ),
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                            .withOpacity(0.6),
+                                      ),
                                 ),
                               ],
                             ),
@@ -644,54 +707,67 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                       child: _isLoadingMessages
                           ? const MessageLoadingShimmer()
                           : _messages.isEmpty
-                              ? Center(
-                                  child: Text(
-                                    '暂无消息',
-                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                          ? Center(
+                              child: Text(
+                                '暂无消息',
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface.withOpacity(0.5),
                                     ),
-                                  ),
-                                )
-                              : ListView.builder(
-                                  controller: _scrollController,
-                                  padding: const EdgeInsets.all(16),
-                                  itemCount: _messages.length + (_isLoadingMoreMessages ? 1 : 0),
-                                  itemBuilder: (context, index) {
-                                    // 顶部 loader
-                                    if (_isLoadingMoreMessages && index == 0) {
-                                      return const Padding(
-                                        padding: EdgeInsets.only(bottom: 12),
-                                        child: Center(child: CircularProgressIndicator()),
-                                      );
-                                    }
+                              ),
+                            )
+                          : ListView.builder(
+                              controller: _scrollController,
+                              padding: const EdgeInsets.all(16),
+                              itemCount:
+                                  _messages.length +
+                                  (_isLoadingMoreMessages ? 1 : 0),
+                              itemBuilder: (context, index) {
+                                // 顶部 loader
+                                if (_isLoadingMoreMessages && index == 0) {
+                                  return const Padding(
+                                    padding: EdgeInsets.only(bottom: 12),
+                                    child: Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  );
+                                }
 
-                                    final offset = _isLoadingMoreMessages ? 1 : 0;
-                                    final message = _messages[index - offset];
-                                    
-                                    // 使用统一的方法获取发送者显示名
-                                    final senderName = _getSenderDisplayName(message);
-                                    
-                                    // 判断是否需要显示时间分隔符
-                                    bool shouldShowTime = false;
-                                    if (index - offset == 0) {
-                                      // 第一条消息总是显示时间
-                                      shouldShowTime = true;
-                                    } else {
-                                      final previousMessage = _messages[index - offset - 1];
-                                      final timeDiff = message.createTime - previousMessage.createTime;
-                                      // 如果时间间隔超过10分钟（600秒），显示时间分隔符
-                                      shouldShowTime = timeDiff > 600;
-                                    }
-                                    
-                                    return MessageBubble(
-                                      message: message,
-                                      isFromMe: _isMessageFromMe(message),
-                                      senderDisplayName: senderName,
-                                      sessionUsername: _selectedSession?.username ?? '',
-                                      shouldShowTime: shouldShowTime,
-                                    );
-                                  },
-                                ),
+                                final offset = _isLoadingMoreMessages ? 1 : 0;
+                                final message = _messages[index - offset];
+
+                                // 使用统一的方法获取发送者显示名
+                                final senderName = _getSenderDisplayName(
+                                  message,
+                                );
+
+                                // 判断是否需要显示时间分隔符
+                                bool shouldShowTime = false;
+                                if (index - offset == 0) {
+                                  // 第一条消息总是显示时间
+                                  shouldShowTime = true;
+                                } else {
+                                  final previousMessage =
+                                      _messages[index - offset - 1];
+                                  final timeDiff =
+                                      message.createTime -
+                                      previousMessage.createTime;
+                                  // 如果时间间隔超过10分钟（600秒），显示时间分隔符
+                                  shouldShowTime = timeDiff > 600;
+                                }
+
+                                return MessageBubble(
+                                  message: message,
+                                  isFromMe: _isMessageFromMe(message),
+                                  senderDisplayName: senderName,
+                                  sessionUsername:
+                                      _selectedSession?.username ?? '',
+                                  shouldShowTime: shouldShowTime,
+                                );
+                              },
+                            ),
                     ),
                   ],
                 ),

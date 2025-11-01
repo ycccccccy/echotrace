@@ -47,7 +47,7 @@ class AnalyticsProgressOverlay extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 24),
-                
+
                 // 进度圆环
                 SizedBox(
                   width: 120,
@@ -66,16 +66,17 @@ class AnalyticsProgressOverlay extends StatelessWidget {
                       ),
                       Text(
                         '${(progressPercent * 100).toStringAsFixed(0)}%',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
+                        style: Theme.of(context).textTheme.headlineSmall
+                            ?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 24),
-                
+
                 // 当前阶段
                 if (currentStage.isNotEmpty)
                   Text(
@@ -85,13 +86,16 @@ class AnalyticsProgressOverlay extends StatelessWidget {
                     ),
                     textAlign: TextAlign.center,
                   ),
-                
+
                 const SizedBox(height: 8),
-                
+
                 // 详细信息（当前处理的用户）
                 if (detailInfo != null && detailInfo!.isNotEmpty)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.grey.shade100,
                       borderRadius: BorderRadius.circular(12),
@@ -106,10 +110,10 @@ class AnalyticsProgressOverlay extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                
+
                 if (detailInfo != null && detailInfo!.isNotEmpty)
                   const SizedBox(height: 8),
-                
+
                 // 进度详情
                 if (totalProgress > 0)
                   Text(
@@ -119,9 +123,9 @@ class AnalyticsProgressOverlay extends StatelessWidget {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                
+
                 const SizedBox(height: 16),
-                
+
                 // 时间统计信息
                 if (elapsedSeconds != null || estimatedRemainingSeconds != null)
                   Padding(
@@ -131,32 +135,30 @@ class AnalyticsProgressOverlay extends StatelessWidget {
                         if (elapsedSeconds != null)
                           Text(
                             '已用时: ${_formatDuration(elapsedSeconds!)}',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey.shade600,
-                            ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: Colors.grey.shade600),
                           ),
                         if (estimatedRemainingSeconds != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 4),
                             child: Text(
                               '预计还需: ${_formatDuration(estimatedRemainingSeconds!)}',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Colors.grey.shade600,
-                              ),
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: Colors.grey.shade600),
                             ),
                           ),
                       ],
                     ),
                   ),
-                
+
                 const SizedBox(height: 16),
-                
+
                 // 提示信息
                 Text(
                   '分析过程在后台进行，不会卡顿界面',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey.shade500,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: Colors.grey.shade500),
                   textAlign: TextAlign.center,
                 ),
               ],
@@ -186,4 +188,3 @@ class AnalyticsProgressOverlay extends StatelessWidget {
     return parts.join('');
   }
 }
-

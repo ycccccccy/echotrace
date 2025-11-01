@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-/// 数据文本构建器 
+/// 数据文本构建器
 
 class RichTextBuilder {
   /// 创建一个包含数据的富文本，数据部分用不同样式突出
-  /// 
+  ///
   /// 使用示例：
   /// RichTextBuilder.withData(
   ///   baseStyle: bodySize16,
@@ -20,28 +20,27 @@ class RichTextBuilder {
     TextAlign textAlign = TextAlign.center,
   }) {
     List<InlineSpan> spans = [];
-    
+
     for (var part in parts) {
       if (part is TextPart) {
-        spans.add(TextSpan(
-          text: part.text,
-          style: part.style ?? baseStyle,
-        ));
+        spans.add(TextSpan(text: part.text, style: part.style ?? baseStyle));
       } else if (part is DataPart) {
-        spans.add(TextSpan(
-          text: part.text,
-          style: part.style ?? baseStyle.copyWith(
-            fontWeight: FontWeight.bold,
-            color: part.color ?? const Color(0xFF07C160),
+        spans.add(
+          TextSpan(
+            text: part.text,
+            style:
+                part.style ??
+                baseStyle.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: part.color ?? const Color(0xFF07C160),
+                ),
           ),
-        ));
+        );
       }
     }
-    
+
     return RichText(
-      text: TextSpan(
-        children: spans,
-      ),
+      text: TextSpan(children: spans),
       textAlign: textAlign,
     );
   }
@@ -81,7 +80,7 @@ class RichTextBuilder {
   }
 
   /// 创建多个数据高亮的文本
-  /// 
+  ///
   /// 使用示例：
   /// RichTextBuilder.multiHighlight(
   ///   baseStyle: bodyStyle,
@@ -98,47 +97,47 @@ class RichTextBuilder {
   }) {
     List<InlineSpan> spans = [];
     String remaining = text;
-    
+
     // 找到所有高亮部分的位置
     List<_HighlightMatch> matches = [];
     for (var highlightKey in highlights.keys) {
       int index = 0;
       while ((index = remaining.indexOf(highlightKey, index)) != -1) {
-        matches.add(_HighlightMatch(
-          start: index,
-          end: index + highlightKey.length,
-          key: highlightKey,
-          style: highlights[highlightKey]!,
-        ));
+        matches.add(
+          _HighlightMatch(
+            start: index,
+            end: index + highlightKey.length,
+            key: highlightKey,
+            style: highlights[highlightKey]!,
+          ),
+        );
         index += highlightKey.length;
       }
     }
-    
+
     // 排序匹配位置
     matches.sort((a, b) => a.start.compareTo(b.start));
-    
+
     int currentPos = 0;
     for (var match in matches) {
       if (currentPos < match.start) {
-        spans.add(TextSpan(
-          text: remaining.substring(currentPos, match.start),
-          style: baseStyle,
-        ));
+        spans.add(
+          TextSpan(
+            text: remaining.substring(currentPos, match.start),
+            style: baseStyle,
+          ),
+        );
       }
-      spans.add(TextSpan(
-        text: match.key,
-        style: match.style,
-      ));
+      spans.add(TextSpan(text: match.key, style: match.style));
       currentPos = match.end;
     }
-    
+
     if (currentPos < remaining.length) {
-      spans.add(TextSpan(
-        text: remaining.substring(currentPos),
-        style: baseStyle,
-      ));
+      spans.add(
+        TextSpan(text: remaining.substring(currentPos), style: baseStyle),
+      );
     }
-    
+
     return RichText(
       text: TextSpan(children: spans),
       textAlign: TextAlign.center,
@@ -157,10 +156,7 @@ class TextPart extends TextPartBase {
   final String text;
   final TextStyle? style;
 
-  TextPart({
-    required this.text,
-    this.style,
-  });
+  TextPart({required this.text, this.style});
 }
 
 /// 数据部分 - 用于突出显示的数据
@@ -170,11 +166,7 @@ class DataPart extends TextPartBase {
   final TextStyle? style;
   final Color? color;
 
-  DataPart({
-    required this.text,
-    this.style,
-    this.color,
-  });
+  DataPart({required this.text, this.style, this.color});
 }
 
 /// 内部辅助类 - 用于追踪高亮位置
@@ -193,5 +185,4 @@ class _HighlightMatch {
 }
 
 /// 预设的排版方案 - 将数据融入文案的通用模板
-class TypographyTemplates {
-}
+class TypographyTemplates {}

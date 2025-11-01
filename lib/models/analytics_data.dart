@@ -8,13 +8,13 @@ class ChatStatistics {
   final int voiceMessages; // 语音消息数
   final int videoMessages; // 视频消息数
   final int otherMessages; // 其他消息数
-  
+
   final int sentMessages; // 发送的消息数
   final int receivedMessages; // 接收的消息数
-  
+
   final DateTime? firstMessageTime; // 第一条消息时间
   final DateTime? lastMessageTime; // 最后一条消息时间
-  
+
   final int activeDays; // 活跃天数
 
   ChatStatistics({
@@ -81,11 +81,11 @@ class ChatStatistics {
     otherMessages: json['otherMessages'],
     sentMessages: json['sentMessages'],
     receivedMessages: json['receivedMessages'],
-    firstMessageTime: json['firstMessageTime'] != null 
-        ? DateTime.parse(json['firstMessageTime']) 
+    firstMessageTime: json['firstMessageTime'] != null
+        ? DateTime.parse(json['firstMessageTime'])
         : null,
-    lastMessageTime: json['lastMessageTime'] != null 
-        ? DateTime.parse(json['lastMessageTime']) 
+    lastMessageTime: json['lastMessageTime'] != null
+        ? DateTime.parse(json['lastMessageTime'])
         : null,
     activeDays: json['activeDays'],
   );
@@ -96,7 +96,7 @@ class TimeDistribution {
   final Map<int, int> hourlyDistribution; // 小时分布 (0-23)
   final Map<int, int> weekdayDistribution; // 星期分布 (1-7)
   final Map<String, int> monthlyDistribution; // 月份分布 (YYYY-MM)
-  
+
   TimeDistribution({
     required this.hourlyDistribution,
     required this.weekdayDistribution,
@@ -139,10 +139,7 @@ class WordFrequency {
   final Map<String, int> wordCount; // 词语及其出现次数
   final int totalWords; // 总词数
 
-  WordFrequency({
-    required this.wordCount,
-    required this.totalWords,
-  });
+  WordFrequency({required this.wordCount, required this.totalWords});
 
   /// 获取前N个高频词
   List<MapEntry<String, int>> getTopWords(int n) {
@@ -204,8 +201,8 @@ class ContactRanking {
     messageCount: json['messageCount'],
     sentCount: json['sentCount'],
     receivedCount: json['receivedCount'],
-    lastMessageTime: json['lastMessageTime'] != null 
-        ? DateTime.parse(json['lastMessageTime']) 
+    lastMessageTime: json['lastMessageTime'] != null
+        ? DateTime.parse(json['lastMessageTime'])
         : null,
   );
 }
@@ -245,8 +242,7 @@ class MessageContent {
     if (localType != 1 && localType != 244813135921) return false;
 
     // 过滤掉空消息和各种占位符格式
-    if (content.isEmpty ||
-        content.startsWith('[') && content.endsWith(']')) {
+    if (content.isEmpty || content.startsWith('[') && content.endsWith(']')) {
       return false;
     }
 
@@ -259,4 +255,3 @@ class MessageContent {
     return content.trim();
   }
 }
-

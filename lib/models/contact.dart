@@ -71,8 +71,8 @@ class Contact {
       chatRoomNotify: map['chat_room_notify'] ?? 0,
       isInChatRoom: map['is_in_chat_room'] ?? 0,
       description: map['description'] ?? '',
-      extraBuffer: map['extra_buffer'] != null 
-          ? List<int>.from(map['extra_buffer']) 
+      extraBuffer: map['extra_buffer'] != null
+          ? List<int>.from(map['extra_buffer'])
           : [],
       chatRoomType: map['chat_room_type'] ?? 0,
     );

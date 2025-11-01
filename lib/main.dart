@@ -33,7 +33,7 @@ class EchoTraceApp extends StatelessWidget {
   ThemeData _buildLightTheme() {
     const wechatGreen = Color(0xFF07C160);
     const backgroundColor = Color(0xFFF5F5F5); // 浅灰色背景
-    
+
     return ThemeData(
       useMaterial3: true,
       fontFamily: 'HarmonyOS Sans SC',
@@ -52,10 +52,7 @@ class EchoTraceApp extends StatelessWidget {
         shadowColor: Colors.black.withOpacity(0.05),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: Colors.grey.withOpacity(0.1),
-            width: 1,
-          ),
+          side: BorderSide(color: Colors.grey.withOpacity(0.1), width: 1),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -63,24 +60,18 @@ class EchoTraceApp extends StatelessWidget {
           backgroundColor: wechatGreen,
           foregroundColor: Colors.white,
           elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: wechatGreen,
           side: const BorderSide(color: wechatGreen),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: wechatGreen, width: 2),
@@ -88,5 +79,4 @@ class EchoTraceApp extends StatelessWidget {
       ),
     );
   }
-
 }

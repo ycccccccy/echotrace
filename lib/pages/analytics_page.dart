@@ -11,10 +11,7 @@ import 'annual_report_display_page.dart';
 class AnalyticsPage extends StatefulWidget {
   final DatabaseService databaseService;
 
-  const AnalyticsPage({
-    super.key,
-    required this.databaseService,
-  });
+  const AnalyticsPage({super.key, required this.databaseService});
 
   @override
   State<AnalyticsPage> createState() => _AnalyticsPageState();
@@ -26,12 +23,12 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
   ChatStatistics? _overallStats;
   List<ContactRanking>? _contactRankings;
   List<ContactRanking>? _allContactRankings; // 保存所有排名
-  
+
   // 加载进度状态
   String _loadingStatus = '';
   int _processedCount = 0;
   int _totalCount = 0;
-  
+
   // Top N 选择
   int _topN = 10;
 
@@ -51,9 +48,9 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     if (!widget.databaseService.isConnected) {
       await logger.warning('AnalyticsPage', '数据库未连接');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请先连接数据库')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请先连接数据库')));
       }
       return;
     }
@@ -81,7 +78,10 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
         if (await dbFile.exists()) {
           final stat = await dbFile.stat();
           dbModifiedTime = stat.modified.millisecondsSinceEpoch;
-          await logger.debug('AnalyticsPage', '数据库修改时间: ${DateTime.fromMillisecondsSinceEpoch(dbModifiedTime)}');
+          await logger.debug(
+            'AnalyticsPage',
+            '数据库修改时间: ${DateTime.fromMillisecondsSinceEpoch(dbModifiedTime)}',
+          );
         } else {
           await logger.warning('AnalyticsPage', '数据库文件不存在');
         }
@@ -91,7 +91,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
       await logger.debug('AnalyticsPage', '开始检查缓存');
       final cachedData = await cacheService.loadBasicAnalytics();
       await logger.debug('AnalyticsPage', '缓存检查完成，有缓存: ${cachedData != null}');
-      
+
       if (cachedData != null && dbModifiedTime != null) {
         // 有缓存，检查数据库是否变化
         await logger.debug('AnalyticsPage', '检查数据库是否变化');
@@ -119,7 +119,10 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
               _loadingStatus = '完成（使用缓存数据）';
               _isLoading = false;
             });
-            await logger.debug('AnalyticsPage', '使用缓存数据完成，总消息数: ${_overallStats?.totalMessages}');
+            await logger.debug(
+              'AnalyticsPage',
+              '使用缓存数据完成，总消息数: ${_overallStats?.totalMessages}',
+            );
           }
           return;
         }
@@ -134,19 +137,24 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
           _loadingStatus = '完成（从缓存加载）';
           _isLoading = false;
         });
-        await logger.debug('AnalyticsPage', '缓存加载完成，总消息数: ${_overallStats?.totalMessages}, 联系人数: ${_allContactRankings?.length}');
+        await logger.debug(
+          'AnalyticsPage',
+          '缓存加载完成，总消息数: ${_overallStats?.totalMessages}, 联系人数: ${_allContactRankings?.length}',
+        );
         return;
       }
 
       // 没有缓存，重新分析
       await logger.info('AnalyticsPage', '没有缓存，开始重新分析');
-      await _performAnalysis(dbModifiedTime ?? DateTime.now().millisecondsSinceEpoch);
+      await _performAnalysis(
+        dbModifiedTime ?? DateTime.now().millisecondsSinceEpoch,
+      );
     } catch (e, stackTrace) {
       await logger.error('AnalyticsPage', '加载数据失败: $e', e, stackTrace);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('加载数据失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('加载数据失败: $e')));
       }
     } finally {
       if (mounted) {
@@ -267,17 +275,23 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
       if (!mounted) break;
       setState(() {
         _processedCount = i + 1;
-        _loadingStatus = '正在分析: ${displayNames[session.username] ?? session.username}';
+        _loadingStatus =
+            '正在分析: ${displayNames[session.username] ?? session.username}';
       });
 
       // 每处理100个联系人记录一次进度
       if ((i + 1) % 100 == 0) {
-        await logger.debug('AnalyticsPage', '已处理 ${i + 1}/${privateSessions.length} 个联系人');
+        await logger.debug(
+          'AnalyticsPage',
+          '已处理 ${i + 1}/${privateSessions.length} 个联系人',
+        );
       }
 
       try {
         // 使用SQL直接统计，不加载所有消息
-        final stats = await widget.databaseService.getSessionMessageStats(session.username);
+        final stats = await widget.databaseService.getSessionMessageStats(
+          session.username,
+        );
         final messageCount = stats['total'] as int;
         if (messageCount == 0) {
           skippedCount++;
@@ -288,36 +302,52 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
         final receivedCount = stats['received'] as int;
 
         // 获取最后一条消息时间
-        final timeRange = await widget.databaseService.getSessionTimeRange(session.username);
+        final timeRange = await widget.databaseService.getSessionTimeRange(
+          session.username,
+        );
         final lastMessageTime = timeRange['last'] != null
             ? DateTime.fromMillisecondsSinceEpoch(timeRange['last']! * 1000)
             : null;
 
-        rankings.add(ContactRanking(
-          username: session.username,
-          displayName: displayNames[session.username] ?? session.username,
-          messageCount: messageCount,
-          sentCount: sentCount,
-          receivedCount: receivedCount,
-          lastMessageTime: lastMessageTime,
-        ));
+        rankings.add(
+          ContactRanking(
+            username: session.username,
+            displayName: displayNames[session.username] ?? session.username,
+            messageCount: messageCount,
+            sentCount: sentCount,
+            receivedCount: receivedCount,
+            lastMessageTime: lastMessageTime,
+          ),
+        );
       } catch (e, stackTrace) {
         // 读取失败，跳过
         errorCount++;
-        await logger.warning('AnalyticsPage', '读取联系人 ${session.username} 失败: $e\n$stackTrace');
+        await logger.warning(
+          'AnalyticsPage',
+          '读取联系人 ${session.username} 失败: $e\n$stackTrace',
+        );
       }
     }
 
-    await logger.debug('AnalyticsPage', '联系人处理完成，有效: ${rankings.length}, 跳过: $skippedCount, 错误: $errorCount');
+    await logger.debug(
+      'AnalyticsPage',
+      '联系人处理完成，有效: ${rankings.length}, 跳过: $skippedCount, 错误: $errorCount',
+    );
 
     rankings.sort((a, b) => b.messageCount.compareTo(a.messageCount));
     final topRankings = rankings.take(50).toList();
 
     await logger.info('AnalyticsPage', '联系人排名完成，返回前 ${topRankings.length} 名');
     if (topRankings.isNotEmpty) {
-      await logger.debug('AnalyticsPage', '第1名: ${topRankings[0].displayName}, 消息数: ${topRankings[0].messageCount}');
+      await logger.debug(
+        'AnalyticsPage',
+        '第1名: ${topRankings[0].displayName}, 消息数: ${topRankings[0].messageCount}',
+      );
       if (topRankings.length >= 10) {
-        await logger.debug('AnalyticsPage', '第10名: ${topRankings[9].displayName}, 消息数: ${topRankings[9].messageCount}');
+        await logger.debug(
+          'AnalyticsPage',
+          '第10名: ${topRankings[9].displayName}, 消息数: ${topRankings[9].messageCount}',
+        );
       }
     }
 
@@ -337,8 +367,8 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
             child: _isLoading
                 ? _buildLoadingView()
                 : _overallStats == null
-                    ? _buildEmptyView()
-                    : _buildContent(),
+                ? _buildEmptyView()
+                : _buildContent(),
           ),
         ],
       ),
@@ -352,10 +382,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(
-          bottom: BorderSide(
-            color: Colors.grey.withOpacity(0.1),
-            width: 1,
-          ),
+          bottom: BorderSide(color: Colors.grey.withOpacity(0.1), width: 1),
         ),
       ),
       child: Row(
@@ -368,9 +395,9 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
           const SizedBox(width: 12),
           Text(
             '数据分析',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
           ),
           const Spacer(),
           if (!_isLoading)
@@ -402,29 +429,31 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
               ),
             ),
             const SizedBox(height: 32),
-            
+
             // 当前状态
             Text(
               _loadingStatus,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w500,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w500),
               textAlign: TextAlign.center,
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // 进度数字
             if (_totalCount > 0)
               Text(
                 '$_processedCount / $_totalCount',
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withOpacity(0.6),
                 ),
               ),
-            
+
             const SizedBox(height: 8),
-            
+
             // 进度条
             if (_totalCount > 0)
               Padding(
@@ -436,14 +465,16 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
-            
+
             const SizedBox(height: 24),
-            
+
             // 提示文字
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                color: Theme.of(
+                  context,
+                ).colorScheme.surfaceVariant.withOpacity(0.3),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -476,24 +507,20 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.analytics_outlined,
-            size: 80,
-            color: Colors.grey[300],
-          ),
+          Icon(Icons.analytics_outlined, size: 80, color: Colors.grey[300]),
           const SizedBox(height: 16),
           Text(
             '暂无数据',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: Colors.grey[400],
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(color: Colors.grey[400]),
           ),
           const SizedBox(height: 8),
           Text(
             '请先连接数据库',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.grey[400],
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: Colors.grey[400]),
           ),
         ],
       ),
@@ -507,7 +534,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
         // 年度报告入口（置顶）
         _buildAnnualReportEntry(),
         const SizedBox(height: 16),
-        
+
         _buildOverallStatsCard(),
         const SizedBox(height: 16),
         _buildMessageTypeChart(),
@@ -522,45 +549,45 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
   /// 年度报告入口卡片
   Widget _buildAnnualReportEntry() {
     const wechatGreen = Color(0xFF07C160);
-    
+
     return Card(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: const BorderSide(color: wechatGreen, width: 1),
       ),
       child: InkWell(
-        onTap: _isLoading ? null : () async {
-          // 显示加载状态
-          setState(() {
-            _isLoading = true;
-            _loadingStatus = '正在准备年度报告...';
-          });
+        onTap: _isLoading
+            ? null
+            : () async {
+                // 显示加载状态
+                setState(() {
+                  _isLoading = true;
+                  _loadingStatus = '正在准备年度报告...';
+                });
 
-          try {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => AnnualReportDisplayPage(
-                  databaseService: widget.databaseService,
-                ),
-              ),
-            );
-          } finally {
-            // 隐藏加载状态
-            if (mounted) {
-              setState(() {
-                _isLoading = false;
-                _loadingStatus = '';
-              });
-            }
-          }
-        },
+                try {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => AnnualReportDisplayPage(
+                        databaseService: widget.databaseService,
+                      ),
+                    ),
+                  );
+                } finally {
+                  // 隐藏加载状态
+                  if (mounted) {
+                    setState(() {
+                      _isLoading = false;
+                      _loadingStatus = '';
+                    });
+                  }
+                }
+              },
         borderRadius: BorderRadius.circular(12),
         child: Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
           child: Row(
             children: [
               Expanded(
@@ -576,9 +603,9 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                     const SizedBox(height: 4),
                     Text(
                       '深度分析你的聊天数据，发现更多有趣洞察',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey[600],
-                      ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
                     ),
                   ],
                 ),
@@ -607,7 +634,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
   /// 总体统计卡片
   Widget _buildOverallStatsCard() {
     final stats = _overallStats!;
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -621,7 +648,10 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
             const SizedBox(height: 16),
             _buildStatRow('总消息数', stats.totalMessages.toString()),
             _buildStatRow('活跃天数', stats.activeDays.toString()),
-            _buildStatRow('平均每天', stats.averageMessagesPerDay.toStringAsFixed(1)),
+            _buildStatRow(
+              '平均每天',
+              stats.averageMessagesPerDay.toStringAsFixed(1),
+            ),
             _buildStatRow('聊天时长', '${stats.chatDurationDays} 天'),
             if (stats.firstMessageTime != null)
               _buildStatRow('首条消息', _formatDateTime(stats.firstMessageTime!)),
@@ -637,7 +667,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
   Widget _buildMessageTypeChart() {
     final stats = _overallStats!;
     final distribution = stats.messageTypeDistribution;
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -650,22 +680,19 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
             ),
             const SizedBox(height: 16),
             ...distribution.entries.map((entry) {
-              final percentage = stats.totalMessages > 0 
+              final percentage = stats.totalMessages > 0
                   ? (entry.value / stats.totalMessages * 100).toStringAsFixed(1)
                   : '0.0';
-              
+
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(
                   children: [
-                    SizedBox(
-                      width: 60,
-                      child: Text(entry.key),
-                    ),
+                    SizedBox(width: 60, child: Text(entry.key)),
                     Expanded(
                       child: LinearProgressIndicator(
-                        value: stats.totalMessages > 0 
-                            ? entry.value / stats.totalMessages 
+                        value: stats.totalMessages > 0
+                            ? entry.value / stats.totalMessages
                             : 0,
                         backgroundColor: Colors.grey[200],
                       ),
@@ -692,7 +719,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
   Widget _buildSendReceiveChart() {
     final stats = _overallStats!;
     final ratio = stats.sendReceiveRatio;
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -705,22 +732,19 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
             ),
             const SizedBox(height: 16),
             ...ratio.entries.map((entry) {
-              final percentage = stats.totalMessages > 0 
+              final percentage = stats.totalMessages > 0
                   ? (entry.value / stats.totalMessages * 100).toStringAsFixed(1)
                   : '0.0';
-              
+
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(
                   children: [
-                    SizedBox(
-                      width: 60,
-                      child: Text(entry.key),
-                    ),
+                    SizedBox(width: 60, child: Text(entry.key)),
                     Expanded(
                       child: LinearProgressIndicator(
-                        value: stats.totalMessages > 0 
-                            ? entry.value / stats.totalMessages 
+                        value: stats.totalMessages > 0
+                            ? entry.value / stats.totalMessages
                             : 0,
                         backgroundColor: Colors.grey[200],
                         color: entry.key == '发送' ? Colors.blue : Colors.green,
@@ -749,7 +773,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     if (_contactRankings == null || _contactRankings!.isEmpty) {
       return const SizedBox.shrink();
     }
-    
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -762,7 +786,10 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
               children: [
                 Text(
                   '聊天最多的联系人 Top $_topN',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 SegmentedButton<int>(
                   segments: const [
@@ -775,7 +802,9 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                     final newTopN = newSelection.first;
                     setState(() {
                       _topN = newTopN;
-                      _contactRankings = _allContactRankings?.take(_topN).toList();
+                      _contactRankings = _allContactRankings
+                          ?.take(_topN)
+                          .toList();
                     });
                   },
                   style: ButtonStyle(
@@ -792,12 +821,10 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                   children: _contactRankings!.asMap().entries.map((entry) {
                     final index = entry.key;
                     final ranking = entry.value;
-                    
+
                     return ListTile(
                       key: ValueKey('${ranking.username}_$index'),
-                      leading: CircleAvatar(
-                        child: Text('${index + 1}'),
-                      ),
+                      leading: CircleAvatar(child: Text('${index + 1}')),
                       title: Text(ranking.displayName),
                       subtitle: Text(
                         '发送: ${ranking.sentCount} | 接收: ${ranking.receivedCount}',
@@ -837,4 +864,3 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
   }
 }
-

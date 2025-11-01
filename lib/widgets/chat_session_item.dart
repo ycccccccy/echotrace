@@ -19,15 +19,16 @@ class ChatSessionItem extends StatelessWidget {
 
   /// 安全获取头像文本
   String _getAvatarText(BuildContext context, ChatSession session) {
-    final myWxid = context.read<AppState>().databaseService.currentAccountWxid ?? '';
-    
+    final myWxid =
+        context.read<AppState>().databaseService.currentAccountWxid ?? '';
+
     // 如果是当前账号，显示"我"
     if (session.username == myWxid) {
       return '我';
     }
-    
+
     final displayName = session.displayName ?? session.username;
-    
+
     // 使用 StringUtils 安全地获取第一个字符
     // 这个方法会正确处理 emoji 等占用多个 code units 的字符
     return StringUtils.getFirstChar(displayName, defaultChar: '?');
@@ -35,15 +36,16 @@ class ChatSessionItem extends StatelessWidget {
 
   /// 安全获取显示名称
   String _getDisplayName(BuildContext context, ChatSession session) {
-    final myWxid = context.read<AppState>().databaseService.currentAccountWxid ?? '';
-    
+    final myWxid =
+        context.read<AppState>().databaseService.currentAccountWxid ?? '';
+
     // 如果是当前账号，显示"我"
     if (session.username == myWxid) {
       return '我';
     }
-    
+
     final displayName = session.displayName ?? session.username;
-    
+
     // 使用 StringUtils 清理并验证
     return StringUtils.cleanOrDefault(displayName, '未知联系人');
   }
@@ -77,11 +79,13 @@ class ChatSessionItem extends StatelessWidget {
 
     try {
       final appState = context.read<AppState>();
-      final detailInfo = await appState.databaseService.getSessionDetailInfo(session.username);
-      
+      final detailInfo = await appState.databaseService.getSessionDetailInfo(
+        session.username,
+      );
+
       if (context.mounted) {
         Navigator.pop(context);
-        
+
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
@@ -125,28 +129,38 @@ class ChatSessionItem extends StatelessWidget {
                     if (detailInfo.messageTables.isEmpty)
                       const Text('未找到消息表', style: TextStyle(color: Colors.grey))
                     else
-                      ...detailInfo.messageTables.map((table) => Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '• ${table.databaseName}',
-                              style: const TextStyle(fontWeight: FontWeight.w500),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.only(left: 16),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('表名: ${table.tableName}', style: const TextStyle(fontSize: 12)),
-                                  Text('消息数: ${table.messageCount} 条', style: const TextStyle(fontSize: 12)),
-                                ],
+                      ...detailInfo.messageTables.map(
+                        (table) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '• ${table.databaseName}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
-                            ),
-                          ],
+                              Padding(
+                                padding: const EdgeInsets.only(left: 16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '表名: ${table.tableName}',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                    Text(
+                                      '消息数: ${table.messageCount} 条',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      )),
+                      ),
                   ],
                 ),
               ),
@@ -163,9 +177,9 @@ class ChatSessionItem extends StatelessWidget {
     } catch (e) {
       if (context.mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('加载详细信息失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('加载详细信息失败: $e')));
       }
     }
   }
@@ -202,7 +216,7 @@ class ChatSessionItem extends StatelessWidget {
   String _formatTimestamp(int timestamp) {
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} '
-           '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}:${date.second.toString().padLeft(2, '0')}';
+        '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}:${date.second.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -212,7 +226,8 @@ class ChatSessionItem extends StatelessWidget {
       return GestureDetector(
         onSecondaryTapDown: (details) {
           // 右键点击，显示上下文菜单
-          final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+          final RenderBox overlay =
+              Overlay.of(context).context.findRenderObject() as RenderBox;
           showMenu(
             context: context,
             position: RelativeRect.fromRect(
@@ -247,7 +262,9 @@ class ChatSessionItem extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: isSelected
-                  ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5)
+                  ? Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer.withOpacity(0.5)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(12),
             ),
@@ -257,7 +274,9 @@ class ChatSessionItem extends StatelessWidget {
                 // 头像
                 CircleAvatar(
                   radius: 24,
-                  backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.primary.withOpacity(0.2),
                   child: Text(
                     _cleanString(_getAvatarText(context, session)),
                     style: TextStyle(
@@ -267,50 +286,54 @@ class ChatSessionItem extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-              
-              // 会话信息
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 用户名和时间
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _getDisplayName(context, session),
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
+
+                // 会话信息
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 用户名和时间
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _getDisplayName(context, session),
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w600),
+                              maxLines: 1,
                             ),
-                            maxLines: 1,
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _cleanString(session.formattedLastTime),
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                          const SizedBox(width: 8),
+                          Text(
+                            _cleanString(session.formattedLastTime),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurface.withOpacity(0.5),
+                                ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    
-                    // 摘要
-                    Text(
-                      _cleanString(session.displaySummary),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                        ],
                       ),
-                      maxLines: 1,
-                    ),
-                  ],
+                      const SizedBox(height: 4),
+
+                      // 摘要
+                      Text(
+                        _cleanString(session.displaySummary),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.7),
+                        ),
+                        maxLines: 1,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
       );
     } catch (e, stackTrace) {
       // 捕获 UTF-16 错误并记录详细信息
@@ -319,7 +342,7 @@ class ChatSessionItem extends StatelessWidget {
       debugPrint('   显示名称: ${session.displayName}');
       debugPrint('   摘要: ${session.displaySummary}');
       debugPrint('   堆栈跟踪: $stackTrace');
-      
+
       // 返回一个安全的替代Widget
       return InkWell(
         onTap: onTap,
@@ -327,7 +350,9 @@ class ChatSessionItem extends StatelessWidget {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: isSelected
-                ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5)
+                ? Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer.withOpacity(0.5)
                 : Colors.transparent,
             border: Border(
               bottom: BorderSide(
@@ -339,7 +364,9 @@ class ChatSessionItem extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 24,
-                backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                backgroundColor: Theme.of(
+                  context,
+                ).colorScheme.primary.withOpacity(0.2),
                 child: const Icon(Icons.error),
               ),
               const SizedBox(width: 12),
@@ -354,7 +381,9 @@ class ChatSessionItem extends StatelessWidget {
                     Text(
                       session.username,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withOpacity(0.5),
                       ),
                     ),
                   ],

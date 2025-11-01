@@ -4,47 +4,56 @@ import 'database_service.dart';
 import 'analytics_service.dart';
 
 /// 高级分析服务
-/// 
+///
 /// 核心分析维度：
-/// 
+///
 /// 1. 年度挚友榜 - 总互动数排名
 ///    衡量指标：总消息数（我发+对方发）
 ///    含义：互动最频繁的关系
 ///    排序：总消息数 ↓
-/// 
+///
 /// 2. 年度倾诉对象 - 倾诉指数排名（我话最多）
 ///    衡量指标：我的发送数 / 对方的发送数
 ///    含义：最想向TA倾诉的人，代表你对TA最信任最有话说
 ///    排序：发送比例 ↓（比值越大越靠前）
 ///    示例：如果某朋友是 我发100条：对方发50条，比例=2.0
-/// 
+///
 /// 3. 年度最佳听众 - 倾听指数排名（TA话最多）
 ///    衡量指标：对方的发送数 / 我的发送数
 ///    含义：最无私的倾听者，代表TA最愿意向你分享
 ///    排序：接收比例 ↓（比值越大越靠前）
 ///    示例：如果某朋友是 对方发100条：我发50条，比例=2.0
-/// 
+///
 /// 这三个维度形成了关系的完整画像：
 /// - 挚友：互动总量高
 /// - 倾诉对象：你主动倾诉
 /// - 最佳听众：TA主动分享
-/// 
+///
 /// 因此这三个排名通常会不同，避免了重复和重叠的问题。
 class AdvancedAnalyticsService {
   final DatabaseService _databaseService;
   final AnalyticsService _analyticsService;
-  
+
   int? _filterYear; // 年份过滤器，null表示显示全部年份
 
   // 系统账号和无效账号的黑名单，避免分析时包含无关数据
   static const _systemAccounts = {
-    'filehelper', 'fmessage', 'medianote', 'newsapp',
-    'weixin', 'gh_', 'brandsessionholder', 'brandservice',
-    'brandsession', 'placeholder', 'qqmail', 'tmessage',
+    'filehelper',
+    'fmessage',
+    'medianote',
+    'newsapp',
+    'weixin',
+    'gh_',
+    'brandsessionholder',
+    'brandservice',
+    'brandsession',
+    'placeholder',
+    'qqmail',
+    'tmessage',
   };
 
   AdvancedAnalyticsService(this._databaseService)
-      : _analyticsService = AnalyticsService(_databaseService);
+    : _analyticsService = AnalyticsService(_databaseService);
 
   /// 设置年份过滤器，用于限定分析的数据范围
   void setYearFilter(int? year) {
@@ -54,7 +63,7 @@ class AdvancedAnalyticsService {
   /// 根据年份过滤消息
   List<Message> _filterMessagesByYear(List<Message> messages) {
     if (_filterYear == null) return messages;
-    
+
     return messages.where((msg) {
       final date = DateTime.fromMillisecondsSinceEpoch(msg.createTime * 1000);
       return date.year == _filterYear;
@@ -89,7 +98,9 @@ class AdvancedAnalyticsService {
   /// 分析作息规律（24小时×7天热力图）
   Future<ActivityHeatmap> analyzeActivityPattern() async {
     // 使用SQL直接统计，避免加载所有消息到内存
-    final data = await _databaseService.getActivityHeatmapData(year: _filterYear);
+    final data = await _databaseService.getActivityHeatmapData(
+      year: _filterYear,
+    );
 
     // 计算最大值
     int maxCount = 0;
@@ -120,8 +131,10 @@ class AdvancedAnalyticsService {
 
     for (final session in privateSessions) {
       try {
-        final messages = await _analyticsService.getAllMessagesForSession(session.username);
-        
+        final messages = await _analyticsService.getAllMessagesForSession(
+          session.username,
+        );
+
         for (final msg in messages) {
           // 统计撤回消息数量
           if (msg.localType == 10000 && msg.displayContent.contains('撤回')) {
@@ -131,7 +144,7 @@ class AdvancedAnalyticsService {
 
           // 只分析自己发送的文本消息，跳过接收的消息和其他类型
           if (msg.isSend != 1 || !msg.isTextMessage) continue;
-          
+
           final content = msg.displayContent;
           if (content.isEmpty || content.startsWith('[')) continue;
 
@@ -160,9 +173,11 @@ class AdvancedAnalyticsService {
 
   /// 生成亲密度日历
   Future<IntimacyCalendar> generateIntimacyCalendar(String username) async {
-    final allMessages = await _analyticsService.getAllMessagesForSession(username);
+    final allMessages = await _analyticsService.getAllMessagesForSession(
+      username,
+    );
     final messages = _filterMessagesByYear(allMessages);
-    
+
     if (messages.isEmpty) {
       return IntimacyCalendar(
         username: username,
@@ -181,9 +196,9 @@ class AdvancedAnalyticsService {
     for (final msg in messages) {
       final time = DateTime.fromMillisecondsSinceEpoch(msg.createTime * 1000);
       final dateKey = DateTime(time.year, time.month, time.day);
-      
+
       dailyMessages[dateKey] = (dailyMessages[dateKey] ?? 0) + 1;
-      
+
       if (dailyMessages[dateKey]! > maxCount) {
         maxCount = dailyMessages[dateKey]!;
       }
@@ -206,10 +221,14 @@ class AdvancedAnalyticsService {
   }
 
   /// 分析对话平衡性，包括消息数量、字数和主动发起情况
-  Future<ConversationBalance> analyzeConversationBalance(String username) async {
-    final allMessages = await _analyticsService.getAllMessagesForSession(username);
+  Future<ConversationBalance> analyzeConversationBalance(
+    String username,
+  ) async {
+    final allMessages = await _analyticsService.getAllMessagesForSession(
+      username,
+    );
     final messages = _filterMessagesByYear(allMessages);
-    
+
     int sentCount = 0;
     int receivedCount = 0;
     int sentWords = 0;
@@ -220,11 +239,11 @@ class AdvancedAnalyticsService {
 
     Message? lastMsg;
     bool isNewSegment = true;
-    
+
     // 按时间正序排列，确保对话段落判断正确
     final sortedMessages = List<Message>.from(messages);
     sortedMessages.sort((a, b) => a.createTime.compareTo(b.createTime));
-    
+
     for (final msg in sortedMessages) {
       if (msg.isSend == 1) {
         sentCount++;
@@ -233,7 +252,7 @@ class AdvancedAnalyticsService {
         receivedCount++;
         receivedWords += msg.displayContent.length;
       }
-      
+
       // 检查是否为新对话段（相邻消息间隔超过20分钟）
       if (lastMsg != null && (msg.createTime - lastMsg.createTime) > 1200) {
         isNewSegment = true;
@@ -249,7 +268,7 @@ class AdvancedAnalyticsService {
         }
         isNewSegment = false;
       }
-      
+
       lastMsg = msg;
     }
 
@@ -268,8 +287,13 @@ class AdvancedAnalyticsService {
   }
 
   /// 寻找关键词的"第一次"出现记录，记录重要时刻
-  Future<List<FirstTimeRecord>> findFirstTimes(String username, List<String> keywords) async {
-    final allMessages = await _analyticsService.getAllMessagesForSession(username);
+  Future<List<FirstTimeRecord>> findFirstTimes(
+    String username,
+    List<String> keywords,
+  ) async {
+    final allMessages = await _analyticsService.getAllMessagesForSession(
+      username,
+    );
     final messages = _filterMessagesByYear(allMessages);
     final records = <FirstTimeRecord>[];
 
@@ -280,17 +304,20 @@ class AdvancedAnalyticsService {
 
     for (final msg in messages) {
       if (!msg.isTextMessage) continue;
-      
+
       final content = msg.displayContent.toLowerCase();
-      
+
       for (final keyword in keywords) {
-        if (!foundKeywords.contains(keyword) && content.contains(keyword.toLowerCase())) {
-          records.add(FirstTimeRecord(
-            keyword: keyword,
-            time: DateTime.fromMillisecondsSinceEpoch(msg.createTime * 1000),
-            messageContent: msg.displayContent,
-            isSentByMe: msg.isSend == 1,
-          ));
+        if (!foundKeywords.contains(keyword) &&
+            content.contains(keyword.toLowerCase())) {
+          records.add(
+            FirstTimeRecord(
+              keyword: keyword,
+              time: DateTime.fromMillisecondsSinceEpoch(msg.createTime * 1000),
+              messageContent: msg.displayContent,
+              isSentByMe: msg.isSend == 1,
+            ),
+          );
           foundKeywords.add(keyword);
         }
       }
@@ -316,20 +343,22 @@ class AdvancedAnalyticsService {
 
     for (final session in privateSessions) {
       try {
-        final allMessages = await _analyticsService.getAllMessagesForSession(session.username);
+        final allMessages = await _analyticsService.getAllMessagesForSession(
+          session.username,
+        );
         final messages = _filterMessagesByYear(allMessages);
-        
+
         for (final msg in messages) {
           if (msg.isSend != 1 || !msg.isTextMessage) continue;
-          
+
           final content = msg.displayContent;
           final matches = hahaPattern.allMatches(content);
-          
+
           for (final match in matches) {
             final hahaText = match.group(0)!;
             final count = hahaText.length;
             totalHaha += count;
-            
+
             if (count > longestHaha) {
               longestHaha = count;
               longestHahaText = hahaText;
@@ -369,9 +398,9 @@ class AdvancedAnalyticsService {
           session.username,
           filterYear: _filterYear,
         );
-        
+
         final midnightCount = stats['midnightCount'] as int;
-        
+
         if (midnightCount > 0) {
           midnightStats[session.username] = {
             'count': midnightCount,
@@ -396,13 +425,14 @@ class AdvancedAnalyticsService {
     }
 
     // 找出深夜消息最多的好友
-    final king = midnightStats.entries
-        .reduce((a, b) => (a.value['count'] as int) > (b.value['count'] as int) ? a : b);
+    final king = midnightStats.entries.reduce(
+      (a, b) => (a.value['count'] as int) > (b.value['count'] as int) ? a : b,
+    );
 
     final kingCount = king.value['count'] as int;
-    
+
     // 计算占比（这个好友的深夜消息数 / 所有深夜消息总数）
-    final percentage = totalMidnightMessages > 0 
+    final percentage = totalMidnightMessages > 0
         ? (kingCount / totalMidnightMessages * 100).toStringAsFixed(1)
         : '0.0';
 
@@ -427,15 +457,13 @@ class AdvancedAnalyticsService {
 
   /// 最长连聊记录
   Future<Map<String, dynamic>> findLongestStreak(String username) async {
-    final allMessages = await _analyticsService.getAllMessagesForSession(username);
+    final allMessages = await _analyticsService.getAllMessagesForSession(
+      username,
+    );
     final messages = _filterMessagesByYear(allMessages);
-    
+
     if (messages.isEmpty) {
-      return {
-        'days': 0,
-        'startDate': null,
-        'endDate': null,
-      };
+      return {'days': 0, 'startDate': null, 'endDate': null};
     }
 
     // 按日期分组
@@ -449,9 +477,12 @@ class AdvancedAnalyticsService {
     // 转换为日期列表并排序
     final dates = dateSet.map((dateStr) {
       final parts = dateStr.split('-');
-      return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
-    }).toList()
-      ..sort();
+      return DateTime(
+        int.parse(parts[0]),
+        int.parse(parts[1]),
+        int.parse(parts[2]),
+      );
+    }).toList()..sort();
 
     // 计算最长连续天数
     int maxStreak = 1;
@@ -480,11 +511,7 @@ class AdvancedAnalyticsService {
       maxEnd = dates.last;
     }
 
-    return {
-      'days': maxStreak,
-      'startDate': maxStart,
-      'endDate': maxEnd,
-    };
+    return {'days': maxStreak, 'startDate': maxStart, 'endDate': maxEnd};
   }
 
   /// 绝对核心好友（总互动数排名）
@@ -507,7 +534,7 @@ class AdvancedAnalyticsService {
           filterYear: _filterYear,
         );
         final count = stats['total'] as int;
-        
+
         if (count > 0) {
           friendshipStats[session.username] = {
             'count': count,
@@ -530,16 +557,15 @@ class AdvancedAnalyticsService {
 
     // 生成排名列表
     return sorted.take(limit).map((e) {
-      final percentage = totalMessages > 0 ? (e.value['count'] / totalMessages * 100) : 0.0;
+      final percentage = totalMessages > 0
+          ? (e.value['count'] / totalMessages * 100)
+          : 0.0;
       return FriendshipRanking(
         username: e.key,
         displayName: e.value['displayName'],
         count: e.value['count'],
         percentage: percentage,
-        details: {
-          'sent': e.value['sent'],
-          'received': e.value['received'],
-        },
+        details: {'sent': e.value['sent'], 'received': e.value['received']},
       );
     }).toList();
   }
@@ -566,16 +592,16 @@ class AdvancedAnalyticsService {
         final sentCount = stats['sent'] as int;
         final receivedCount = stats['received'] as int;
         final totalMessages = sentCount + receivedCount;
-        
+
         // 过滤：消息数少于50条的不计算（关系需要一定深度）
         if (totalMessages < 50) continue;
-        
+
         // 只计算对方有回应的（接收数 > 0）
         if (receivedCount > 0) {
           // 计算倾诉指数：我发送数 / 对方发送数
           // 比值越大，说明我越想向TA倾诉
           final confidentIndex = sentCount / receivedCount;
-          
+
           confidentStats[session.username] = {
             'count': sentCount, // 显示我发送的消息数
             'receivedCount': receivedCount,
@@ -631,16 +657,16 @@ class AdvancedAnalyticsService {
         final sentCount = stats['sent'] as int;
         final receivedCount = stats['received'] as int;
         final totalMessages = sentCount + receivedCount;
-        
+
         // 过滤：消息数少于50条的不计算
         if (totalMessages < 50) continue;
-        
+
         // 只计算我有发送消息的（发送数 > 0）
         if (sentCount > 0) {
           // 计算倾听指数：对方发送数 / 我发送数
           // 比值越大，说明TA越无私地倾听我
           final listenerIndex = receivedCount / sentCount;
-          
+
           listenerStats[session.username] = {
             'count': receivedCount, // 显示对方发送的消息数
             'sentCount': sentCount,
@@ -682,7 +708,7 @@ class AdvancedAnalyticsService {
         .toList();
 
     final balanceList = <Map<String, dynamic>>[];
-    
+
     // 获取所有好友的显示名（包括备注名）
     final displayNames = await _databaseService.getDisplayNames(
       privateSessions.map((s) => s.username).toList(),
@@ -697,18 +723,21 @@ class AdvancedAnalyticsService {
         final sentCount = stats['sent'] as int;
         final receivedCount = stats['received'] as int;
         final totalMessages = sentCount + receivedCount;
-        
+
         // 过滤：消息数少于100条的好友不统计
         if (totalMessages < 100) continue;
-        
+
         if (sentCount > 0 && receivedCount > 0) {
           final ratio = sentCount / receivedCount;
           // 均衡度：1.0最平衡，偏离1.0越远越不平衡
           final balanceness = 1.0 - (ratio - 1.0).abs().clamp(0, 10) / 10;
-          
+
           balanceList.add({
             'username': session.username,
-            'displayName': displayNames[session.username] ?? session.displayName ?? session.username,
+            'displayName':
+                displayNames[session.username] ??
+                session.displayName ??
+                session.username,
             'ratio': ratio,
             'balanceness': balanceness,
             'sentCount': sentCount,
@@ -762,7 +791,10 @@ class AdvancedAnalyticsService {
         );
 
         // 计算总消息数
-        final totalCount = messagesByDate.values.fold(0, (sum, data) => sum + (data['count'] as int));
+        final totalCount = messagesByDate.values.fold(
+          0,
+          (sum, data) => sum + (data['count'] as int),
+        );
 
         // 过滤：消息数少于100条的好友不统计
         if (totalCount < 100) continue;
@@ -826,14 +858,16 @@ class AdvancedAnalyticsService {
 
     final messagesByDate = <String, int>{};
     // 按日期和好友分组统计消息数：dateKey -> {username -> {count, displayName}}
-    final messagesByDateAndFriend = <String, Map<String, Map<String, dynamic>>>{};
+    final messagesByDateAndFriend =
+        <String, Map<String, Map<String, dynamic>>>{};
 
     for (final session in privateSessions) {
       try {
-        final sessionMessagesByDate = await _databaseService.getSessionMessagesByDate(
-          session.username,
-          filterYear: _filterYear,
-        );
+        final sessionMessagesByDate = await _databaseService
+            .getSessionMessagesByDate(
+              session.username,
+              filterYear: _filterYear,
+            );
 
         for (final entry in sessionMessagesByDate.entries) {
           final dateKey = entry.key;
@@ -845,7 +879,10 @@ class AdvancedAnalyticsService {
           messagesByDateAndFriend[dateKey] ??= {};
           messagesByDateAndFriend[dateKey]![session.username] = {
             'count': count,
-            'displayName': displayNames[session.username] ?? session.displayName ?? session.username,
+            'displayName':
+                displayNames[session.username] ??
+                session.displayName ??
+                session.username,
           };
         }
       } catch (e) {
@@ -858,8 +895,9 @@ class AdvancedAnalyticsService {
     }
 
     // 找出消息数最多的一天
-    final peakEntry = messagesByDate.entries
-        .reduce((a, b) => a.value > b.value ? a : b);
+    final peakEntry = messagesByDate.entries.reduce(
+      (a, b) => a.value > b.value ? a : b,
+    );
 
     final dateParts = peakEntry.key.split('-');
     final peakDate = DateTime(
@@ -877,9 +915,10 @@ class AdvancedAnalyticsService {
     final friendsOnPeakDay = messagesByDateAndFriend[peakEntry.key];
     if (friendsOnPeakDay != null && friendsOnPeakDay.isNotEmpty) {
       // 找出消息数最多的好友
-      var topFriendEntry = friendsOnPeakDay.entries
-          .reduce((a, b) => (a.value['count'] as int) > (b.value['count'] as int) ? a : b);
-      
+      var topFriendEntry = friendsOnPeakDay.entries.reduce(
+        (a, b) => (a.value['count'] as int) > (b.value['count'] as int) ? a : b,
+      );
+
       topFriendUsername = topFriendEntry.key;
       topFriendDisplayName = topFriendEntry.value['displayName'] as String;
       topFriendMessageCount = topFriendEntry.value['count'] as int;
@@ -887,7 +926,7 @@ class AdvancedAnalyticsService {
     }
 
     return ChatPeakDay(
-      date: peakDate, 
+      date: peakDate,
       messageCount: peakEntry.value,
       topFriendUsername: topFriendUsername,
       topFriendDisplayName: topFriendDisplayName,
@@ -909,9 +948,8 @@ class AdvancedAnalyticsService {
     );
 
     // 批量获取所有会话的消息日期
-    final allSessionsDates = await _databaseService.getAllPrivateSessionsMessageDates(
-      filterYear: _filterYear,
-    );
+    final allSessionsDates = await _databaseService
+        .getAllPrivateSessionsMessageDates(filterYear: _filterYear);
 
     int globalMaxStreak = 0;
     String? bestFriendUsername;
@@ -927,7 +965,11 @@ class AdvancedAnalyticsService {
         // 转换为日期列表并排序
         final dates = dateSet.map((dateStr) {
           final parts = dateStr.split('-');
-          return DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+          return DateTime(
+            int.parse(parts[0]),
+            int.parse(parts[1]),
+            int.parse(parts[2]),
+          );
         }).toList()..sort();
 
         // 计算最长连续天数
@@ -953,7 +995,10 @@ class AdvancedAnalyticsService {
         if (maxStreak > globalMaxStreak) {
           globalMaxStreak = maxStreak;
           bestFriendUsername = session.username;
-          bestFriendDisplayName = displayNames[session.username] ?? session.displayName ?? session.username;
+          bestFriendDisplayName =
+              displayNames[session.username] ??
+              session.displayName ??
+              session.username;
           streakStart = maxStart;
           streakEnd = maxEnd;
         }
@@ -978,7 +1023,7 @@ class AdvancedAnalyticsService {
     );
 
     if (typeCount.isEmpty) return [];
-    
+
     final totalMessages = typeCount.values.fold(0, (sum, count) => sum + count);
     if (totalMessages == 0) return [];
 
@@ -1013,20 +1058,24 @@ class AdvancedAnalyticsService {
     for (final entry in typeCount.entries) {
       final typeName = typeMapping[entry.key] ?? '其他消息';
       if (typeMapping.containsKey(entry.key)) {
-        stats.add(MessageTypeStats(
-          typeName: typeName,
-          count: entry.value,
-          percentage: entry.value / totalMessages,
-        ));
+        stats.add(
+          MessageTypeStats(
+            typeName: typeName,
+            count: entry.value,
+            percentage: entry.value / totalMessages,
+          ),
+        );
       }
     }
 
     if (otherCount > 0) {
-      stats.add(MessageTypeStats(
-        typeName: '其他消息',
-        count: otherCount,
-        percentage: otherCount / totalMessages,
-      ));
+      stats.add(
+        MessageTypeStats(
+          typeName: '其他消息',
+          count: otherCount,
+          percentage: otherCount / totalMessages,
+        ),
+      );
     }
 
     // 按数量从高到低排序
@@ -1037,8 +1086,10 @@ class AdvancedAnalyticsService {
 
   /// 消息长度分析
   Future<MessageLengthData> analyzeMessageLength() async {
-    final stats = await _databaseService.getTextMessageLengthStats(year: _filterYear);
-    
+    final stats = await _databaseService.getTextMessageLengthStats(
+      year: _filterYear,
+    );
+
     final averageLength = stats['averageLength'] as double;
     final longestLength = stats['longestLength'] as int;
     final textMessageCount = stats['textMessageCount'] as int;
@@ -1051,11 +1102,13 @@ class AdvancedAnalyticsService {
 
     if (longestMsg != null) {
       final content = longestMsg['content'] as String;
-      longestContent = content.length > 100 
-          ? content.substring(0, 100) + '...' 
+      longestContent = content.length > 100
+          ? content.substring(0, 100) + '...'
           : content;
-      longestMessageTime = DateTime.fromMillisecondsSinceEpoch((longestMsg['createTime'] as int) * 1000);
-      
+      longestMessageTime = DateTime.fromMillisecondsSinceEpoch(
+        (longestMsg['createTime'] as int) * 1000,
+      );
+
       // 从表名推断会话ID（简化处理，实际可能需要反查）
       final tableName = longestMsg['tableName'] as String;
       longestSentTo = tableName; // 临时使用表名
@@ -1073,4 +1126,3 @@ class AdvancedAnalyticsService {
     );
   }
 }
-

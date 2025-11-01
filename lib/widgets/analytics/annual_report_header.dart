@@ -50,7 +50,7 @@ class AnnualReportHeader extends StatelessWidget {
                   ),
                 ),
               ),
-            
+
             // 标题
             Center(
               child: Column(
@@ -99,4 +99,3 @@ class AnnualReportHeader extends StatelessWidget {
     );
   }
 }
-

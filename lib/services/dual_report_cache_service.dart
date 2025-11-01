@@ -21,18 +21,16 @@ class DualReportCacheService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final key = _getCacheKey(friendUsername, year);
-      
+
       // 添加缓存时间戳
       final cacheData = {
         ...reportData,
         '_cachedAt': DateTime.now().toIso8601String(),
       };
-      
+
       final jsonString = jsonEncode(cacheData);
       await prefs.setString(key, jsonString);
-      
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   /// 从缓存加载双人报告
@@ -44,25 +42,25 @@ class DualReportCacheService {
       final prefs = await SharedPreferences.getInstance();
       final key = _getCacheKey(friendUsername, year);
       final jsonString = prefs.getString(key);
-      
+
       if (jsonString == null) {
         return null;
       }
-      
+
       final data = jsonDecode(jsonString) as Map<String, dynamic>;
-      
+
       // 检查缓存是否过期
       final cachedAtStr = data['_cachedAt'] as String?;
       if (cachedAtStr != null) {
         final cachedAt = DateTime.parse(cachedAtStr);
         final age = DateTime.now().difference(cachedAt);
-        
+
         if (age > _cacheValidity) {
           await clearReport(friendUsername, year);
           return null;
         }
       }
-      
+
       return data;
     } catch (e) {
       return null;
@@ -86,37 +84,36 @@ class DualReportCacheService {
       final prefs = await SharedPreferences.getInstance();
       final key = _getCacheKey(friendUsername, year);
       await prefs.remove(key);
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   /// 清除所有双人报告缓存
   static Future<void> clearAllReports() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final keys = prefs.getKeys().where((k) => k.startsWith(_keyPrefix)).toList();
-      
+      final keys = prefs
+          .getKeys()
+          .where((k) => k.startsWith(_keyPrefix))
+          .toList();
+
       for (final key in keys) {
         await prefs.remove(key);
       }
-      
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   /// 获取缓存信息
   static Future<Map<String, dynamic>> getCacheInfo() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final keys = prefs.getKeys().where((k) => k.startsWith(_keyPrefix)).toList();
-      
-      return {
-        'count': keys.length,
-        'keys': keys,
-      };
+      final keys = prefs
+          .getKeys()
+          .where((k) => k.startsWith(_keyPrefix))
+          .toList();
+
+      return {'count': keys.length, 'keys': keys};
     } catch (e) {
       return {'count': 0, 'keys': []};
     }
   }
 }
-

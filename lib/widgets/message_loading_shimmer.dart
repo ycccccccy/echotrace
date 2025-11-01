@@ -16,7 +16,9 @@ class MessageLoadingShimmer extends StatelessWidget {
         return Padding(
           padding: const EdgeInsets.only(bottom: 16),
           child: Row(
-            mainAxisAlignment: isLeft ? MainAxisAlignment.start : MainAxisAlignment.end,
+            mainAxisAlignment: isLeft
+                ? MainAxisAlignment.start
+                : MainAxisAlignment.end,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (isLeft) ...[
@@ -71,4 +73,3 @@ class MessageLoadingShimmer extends StatelessWidget {
     );
   }
 }
-

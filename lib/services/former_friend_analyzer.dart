@@ -4,15 +4,15 @@ import 'database_service.dart';
 class FormerFriendResult {
   final String username;
   final String displayName;
-  final DateTime activeStartDate;  // 活跃期开始日期
-  final DateTime activeEndDate;    // 活跃期结束日期
-  final int activeDays;            // 活跃期天数
-  final int activeDaysCount;       // 活跃期内有聊天的天数
-  final int activeMessageCount;    // 活跃期内的消息总数
+  final DateTime activeStartDate; // 活跃期开始日期
+  final DateTime activeEndDate; // 活跃期结束日期
+  final int activeDays; // 活跃期天数
+  final int activeDaysCount; // 活跃期内有聊天的天数
+  final int activeMessageCount; // 活跃期内的消息总数
   final DateTime? lastMessageDate; // 最后一条消息的日期
-  final int daysSinceActive;       // 距离活跃期结束的天数
-  final int messagesAfterActive;   // 活跃期后的消息数
-  final double afterFrequency;     // 活跃期后的聊天频率（消息数/天）
+  final int daysSinceActive; // 距离活跃期结束的天数
+  final int messagesAfterActive; // 活跃期后的消息数
+  final double afterFrequency; // 活跃期后的聊天频率（消息数/天）
 
   FormerFriendResult({
     required this.username,
@@ -51,8 +51,8 @@ class FormerFriendResult {
       activeDays: json['activeDays'] as int,
       activeDaysCount: json['activeDaysCount'] as int,
       activeMessageCount: json['activeMessageCount'] as int,
-      lastMessageDate: json['lastMessageDate'] != null 
-          ? DateTime.parse(json['lastMessageDate'] as String) 
+      lastMessageDate: json['lastMessageDate'] != null
+          ? DateTime.parse(json['lastMessageDate'] as String)
           : null,
       daysSinceActive: json['daysSinceActive'] as int,
       messagesAfterActive: json['messagesAfterActive'] as int,
@@ -105,11 +105,19 @@ class FormerFriendAnalyzer {
       };
     }
 
-    onLog?.call('数据库最新消息日期: ${latestMessageDate.toString().split(' ')[0]}', level: 'info');
+    onLog?.call(
+      '数据库最新消息日期: ${latestMessageDate.toString().split(' ')[0]}',
+      level: 'info',
+    );
 
     // 定义"近期"为最新消息日期往前30天
-    final recentPeriodStart = latestMessageDate.subtract(const Duration(days: 30));
-    onLog?.call('近期定义: ${recentPeriodStart.toString().split(' ')[0]} 至 ${latestMessageDate.toString().split(' ')[0]}', level: 'info');
+    final recentPeriodStart = latestMessageDate.subtract(
+      const Duration(days: 30),
+    );
+    onLog?.call(
+      '近期定义: ${recentPeriodStart.toString().split(' ')[0]} 至 ${latestMessageDate.toString().split(' ')[0]}',
+      level: 'info',
+    );
 
     // 2. 获取所有私聊会话
     final sessions = await _databaseService.getSessions();
@@ -118,7 +126,7 @@ class FormerFriendAnalyzer {
     onLog?.call('找到 ${privateSessions.length} 个私聊会话', level: 'info');
 
     final displayNames = await _databaseService.getDisplayNames(
-      privateSessions.map((s) => s.username).toList()
+      privateSessions.map((s) => s.username).toList(),
     );
 
     // 统计信息
@@ -158,21 +166,29 @@ class FormerFriendAnalyzer {
         }
 
         // 查找最长的连续聊天期（间隔不超过3天）
-        final longestPeriod = _findLongestConsecutivePeriod(sortedDates, messagesByDate);
+        final longestPeriod = _findLongestConsecutivePeriod(
+          sortedDates,
+          messagesByDate,
+        );
 
         if (longestPeriod == null || longestPeriod['consecutiveDays'] < 14) {
           continue;
         }
 
         final consecutiveDays = longestPeriod['consecutiveDays'] as int;
-        final activeStartDate = DateTime.parse(longestPeriod['startDate'] as String);
-        final activeEndDate = DateTime.parse(longestPeriod['endDate'] as String);
+        final activeStartDate = DateTime.parse(
+          longestPeriod['startDate'] as String,
+        );
+        final activeEndDate = DateTime.parse(
+          longestPeriod['endDate'] as String,
+        );
 
         // 检查是否近期还在频繁聊天
         // 计算近期（最新消息日期往前30天）的消息数量
         final recentMessages = sortedDates.where((date) {
           final d = DateTime.parse(date);
-          return d.isAfter(recentPeriodStart) && d.isBefore(latestMessageDate.add(const Duration(days: 1)));
+          return d.isAfter(recentPeriodStart) &&
+              d.isBefore(latestMessageDate.add(const Duration(days: 1)));
         }).toList();
 
         int recentMessageCount = 0;
@@ -180,12 +196,19 @@ class FormerFriendAnalyzer {
           recentMessageCount += messagesByDate[date]!['count'] as int;
         }
 
-        final recentDays = latestMessageDate.difference(recentPeriodStart).inDays;
-        final recentFrequency = recentDays > 0 ? recentMessageCount / recentDays : 0.0;
+        final recentDays = latestMessageDate
+            .difference(recentPeriodStart)
+            .inDays;
+        final recentFrequency = recentDays > 0
+            ? recentMessageCount / recentDays
+            : 0.0;
 
         // 如果近期频率还很高（比如 > 5条/天），则不算"曾经的好朋友"
         if (recentFrequency > 5.0) {
-          onLog?.call('✗ $displayName 近期频率过高 (${recentFrequency.toStringAsFixed(2)}条/天)，跳过', level: 'debug');
+          onLog?.call(
+            '✗ $displayName 近期频率过高 (${recentFrequency.toStringAsFixed(2)}条/天)，跳过',
+            level: 'debug',
+          );
           continue;
         }
 
@@ -194,7 +217,8 @@ class FormerFriendAnalyzer {
           maxConsecutiveDays = consecutiveDays;
 
           // 计算活跃期的统计数据
-          final activeDays = activeEndDate.difference(activeStartDate).inDays + 1;
+          final activeDays =
+              activeEndDate.difference(activeStartDate).inDays + 1;
           final activeDaysCount = longestPeriod['daysCount'] as int;
           final activeMessageCount = longestPeriod['messageCount'] as int;
 
@@ -234,7 +258,10 @@ class FormerFriendAnalyzer {
             afterFrequency: afterFrequency,
           );
 
-          onLog?.call('新的最佳候选: $displayName, 连续聊天$consecutiveDays天, 近期频率${recentFrequency.toStringAsFixed(2)}条/天', level: 'info');
+          onLog?.call(
+            '新的最佳候选: $displayName, 连续聊天$consecutiveDays天, 近期频率${recentFrequency.toStringAsFixed(2)}条/天',
+            level: 'info',
+          );
         }
       } catch (e) {
         onLog?.call('处理会话 $displayName 时出错: $e', level: 'warning');
@@ -243,9 +270,14 @@ class FormerFriendAnalyzer {
 
     onLog?.call('========== 曾经的好朋友分析完成 ==========', level: 'info');
     onLog?.call('最长连续聊天: $maxConsecutiveDays 天', level: 'info');
-    onLog?.call('统计: 总会话=$totalSessions, 有消息=$sessionsWithMessages, 不足14天=$sessionsUnder14Days', level: 'info');
+    onLog?.call(
+      '统计: 总会话=$totalSessions, 有消息=$sessionsWithMessages, 不足14天=$sessionsUnder14Days',
+      level: 'info',
+    );
 
-    final results = bestCandidate != null ? [bestCandidate] : <FormerFriendResult>[];
+    final results = bestCandidate != null
+        ? [bestCandidate]
+        : <FormerFriendResult>[];
 
     return {
       'results': results,
@@ -321,4 +353,3 @@ class FormerFriendAnalyzer {
     };
   }
 }
-

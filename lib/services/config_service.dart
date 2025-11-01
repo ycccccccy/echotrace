@@ -5,7 +5,8 @@ class ConfigService {
   static const String _keyDecryptKey = 'decrypt_key';
   static const String _keyDatabasePath = 'database_path';
   static const String _keyIsConfigured = 'is_configured';
-  static const String _keyDatabaseMode = 'database_mode'; // 'realtime' 或 'backup'
+  static const String _keyDatabaseMode =
+      'database_mode'; // 'realtime' 或 'backup'
   static const String _keyImageXorKey = 'image_xor_key'; // 图片XOR密钥
   static const String _keyImageAesKey = 'image_aes_key'; // 图片AES密钥
   static const String _keyManualWxid = 'manual_wxid'; // 手动输入的wxid

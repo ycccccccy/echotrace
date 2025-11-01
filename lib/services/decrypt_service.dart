@@ -3,9 +3,9 @@ import 'package:path_provider/path_provider.dart';
 import 'go_decrypt_ffi.dart';
 
 /// 解密服务（使用 Go FFI 实现）
-/// 
+///
 /// 原 Dart 实现已备份为 decrypt_service_dart_backup.dart
-/// 
+///
 /// 性能对比（100MB 数据库）：
 /// - 原 Dart 版本：15-20秒，内存占用 ~200MB
 /// - Go 版本：5-8秒，内存占用 ~50MB
@@ -24,10 +24,10 @@ class DecryptService {
   }
 
   /// 验证密钥
-  /// 
+  ///
   /// [dbPath] 数据库文件路径
   /// [hexKey] 十六进制格式的密钥（64个字符）
-  /// 
+  ///
   /// 返回 true 表示密钥有效，false 表示无效
   Future<bool> validateKey(String dbPath, String hexKey) async {
     try {
@@ -45,13 +45,13 @@ class DecryptService {
   }
 
   /// 解密数据库文件
-  /// 
+  ///
   /// [dbPath] 输入数据库路径
   /// [hexKey] 十六进制格式的密钥（64个字符）
   /// [progressCallback] 进度回调（当前页，总页数）
-  /// 
+  ///
   /// 返回解密后的数据库文件路径
-  /// 
+  ///
   /// 抛出异常：
   /// - 密钥长度不正确
   /// - 数据库文件不存在
@@ -76,10 +76,14 @@ class DecryptService {
       // 修复：使用时间戳+微秒+随机数+源文件名，确保并行解密时路径唯一
       final tempDir = await getTemporaryDirectory();
       final timestamp = DateTime.now().microsecondsSinceEpoch;
-      final sourceFileName = dbPath.split(Platform.pathSeparator).last.replaceAll('.db', '');
+      final sourceFileName = dbPath
+          .split(Platform.pathSeparator)
+          .last
+          .replaceAll('.db', '');
       // 添加随机数进一步确保唯一性
       final random = DateTime.now().millisecondsSinceEpoch % 10000;
-      final outputPath = '${tempDir.path}${Platform.pathSeparator}dec_${sourceFileName}_${timestamp}_$random.db';
+      final outputPath =
+          '${tempDir.path}${Platform.pathSeparator}dec_${sourceFileName}_${timestamp}_$random.db';
 
       // 获取文件大小用于进度估算
       final fileSize = await file.length();
@@ -88,7 +92,7 @@ class DecryptService {
 
       // 开始解密前报告初始进度
       progressCallback(0, totalPages);
-      
+
       // 调用 Go FFI 解密
       final error = await _decryptInBackground(dbPath, outputPath, hexKey);
       if (error != null) {

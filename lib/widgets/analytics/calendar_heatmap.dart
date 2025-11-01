@@ -5,10 +5,7 @@ import '../../models/advanced_analytics_data.dart';
 class CalendarHeatmap extends StatelessWidget {
   final IntimacyCalendar calendar;
 
-  const CalendarHeatmap({
-    super.key,
-    required this.calendar,
-  });
+  const CalendarHeatmap({super.key, required this.calendar});
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +19,7 @@ class CalendarHeatmap extends StatelessWidget {
           // 月份标签
           _buildMonthLabels(context),
           const SizedBox(height: 8),
-          
+
           // 日历网格
           SizedBox(
             height: 112, // 7*14 + 6*2 + 一点安全余度
@@ -48,7 +45,8 @@ class CalendarHeatmap extends StatelessWidget {
                         final level = calendar.getHeatLevel(date);
 
                         return Tooltip(
-                          message: '${date.year}-${date.month}-${date.day}\n$count 条消息',
+                          message:
+                              '${date.year}-${date.month}-${date.day}\n$count 条消息',
                           child: Container(
                             width: 14,
                             height: 14,
@@ -66,9 +64,9 @@ class CalendarHeatmap extends StatelessWidget {
               ),
             ),
           ),
-          
+
           const SizedBox(height: 12),
-          
+
           // 图例
           _buildLegend(context),
         ],
@@ -80,21 +78,21 @@ class CalendarHeatmap extends StatelessWidget {
     // 简化版：只显示起止月份
     final startMonth = calendar.startDate.month;
     final endMonth = calendar.endDate.month;
-    
+
     return Row(
       children: [
         Text(
           '$startMonth月',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Colors.grey[600],
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
         ),
         const Spacer(),
         Text(
           '$endMonth月',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Colors.grey[600],
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
         ),
       ],
     );
@@ -106,9 +104,9 @@ class CalendarHeatmap extends StatelessWidget {
       children: [
         Text(
           '少',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Colors.grey[600],
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
         ),
         const SizedBox(width: 8),
         ...List.generate(6, (index) {
@@ -125,9 +123,9 @@ class CalendarHeatmap extends StatelessWidget {
         const SizedBox(width: 8),
         Text(
           '多',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Colors.grey[600],
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
         ),
       ],
     );
@@ -135,7 +133,7 @@ class CalendarHeatmap extends StatelessWidget {
 
   List<List<DateTime?>> _calculateWeeks() {
     final weeks = <List<DateTime?>>[];
-    
+
     // 从开始日期的周一开始
     DateTime current = calendar.startDate;
     while (current.weekday != 1) {
@@ -143,10 +141,10 @@ class CalendarHeatmap extends StatelessWidget {
     }
 
     DateTime end = calendar.endDate;
-    
+
     while (current.isBefore(end) || current.isAtSameMomentAs(end)) {
       final week = <DateTime?>[];
-      
+
       for (int i = 0; i < 7; i++) {
         if (current.isAfter(end)) {
           week.add(null);
@@ -157,7 +155,7 @@ class CalendarHeatmap extends StatelessWidget {
         }
         current = current.add(const Duration(days: 1));
       }
-      
+
       weeks.add(week);
     }
 
@@ -166,7 +164,7 @@ class CalendarHeatmap extends StatelessWidget {
 
   Color _getColorByLevel(int level) {
     const baseColor = Color(0xFF07C160);
-    
+
     switch (level) {
       case 0:
         return Colors.grey[200]!;
@@ -185,4 +183,3 @@ class CalendarHeatmap extends StatelessWidget {
     }
   }
 }
-

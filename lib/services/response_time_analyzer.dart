@@ -42,10 +42,13 @@ class ResponseTimeResult {
     return ResponseTimeResult(
       username: json['username'] as String,
       displayName: json['displayName'] as String,
-      avgResponseTimeMinutes: (json['avgResponseTimeMinutes'] as num).toDouble(),
+      avgResponseTimeMinutes: (json['avgResponseTimeMinutes'] as num)
+          .toDouble(),
       totalResponses: json['totalResponses'] as int,
-      fastestResponseMinutes: (json['fastestResponseMinutes'] as num).toDouble(),
-      slowestResponseMinutes: (json['slowestResponseMinutes'] as num).toDouble(),
+      fastestResponseMinutes: (json['fastestResponseMinutes'] as num)
+          .toDouble(),
+      slowestResponseMinutes: (json['slowestResponseMinutes'] as num)
+          .toDouble(),
     );
   }
 }
@@ -69,7 +72,10 @@ class ResponseTimeAnalyzer {
     Function(String message, {String level})? onLog,
   }) async {
     onProgress?.call(0, 1, '正在分析响应速度...');
-    onLog?.call('开始调用 DatabaseService.analyzeResponseSpeed (对方回复我)', level: 'debug');
+    onLog?.call(
+      '开始调用 DatabaseService.analyzeResponseSpeed (对方回复我)',
+      level: 'debug',
+    );
 
     final sqlResults = await _databaseService.analyzeResponseSpeed(
       isMyResponse: false, // 对方回复我
@@ -78,19 +84,29 @@ class ResponseTimeAnalyzer {
       onLog: onLog,
     );
 
-    onLog?.call('DatabaseService.analyzeResponseSpeed 返回 ${sqlResults.length} 条结果', level: 'debug');
+    onLog?.call(
+      'DatabaseService.analyzeResponseSpeed 返回 ${sqlResults.length} 条结果',
+      level: 'debug',
+    );
 
-    final results = sqlResults.map((data) => ResponseTimeResult(
-      username: data['username'] as String,
-      displayName: data['displayName'] as String,
-      avgResponseTimeMinutes: data['avgResponseTimeMinutes'] as double,
-      totalResponses: data['totalResponses'] as int,
-      fastestResponseMinutes: data['fastestResponseMinutes'] as double,
-      slowestResponseMinutes: data['slowestResponseMinutes'] as double,
-    )).toList();
+    final results = sqlResults
+        .map(
+          (data) => ResponseTimeResult(
+            username: data['username'] as String,
+            displayName: data['displayName'] as String,
+            avgResponseTimeMinutes: data['avgResponseTimeMinutes'] as double,
+            totalResponses: data['totalResponses'] as int,
+            fastestResponseMinutes: data['fastestResponseMinutes'] as double,
+            slowestResponseMinutes: data['slowestResponseMinutes'] as double,
+          ),
+        )
+        .toList();
 
     onProgress?.call(1, 1, '分析完成');
-    onLog?.call('转换为 ResponseTimeResult 对象完成，共 ${results.length} 个', level: 'debug');
+    onLog?.call(
+      '转换为 ResponseTimeResult 对象完成，共 ${results.length} 个',
+      level: 'debug',
+    );
 
     return results;
   }
@@ -103,7 +119,10 @@ class ResponseTimeAnalyzer {
     Function(String message, {String level})? onLog,
   }) async {
     onProgress?.call(0, 1, '正在分析响应速度...');
-    onLog?.call('开始调用 DatabaseService.analyzeResponseSpeed (我回复对方)', level: 'debug');
+    onLog?.call(
+      '开始调用 DatabaseService.analyzeResponseSpeed (我回复对方)',
+      level: 'debug',
+    );
 
     final sqlResults = await _databaseService.analyzeResponseSpeed(
       isMyResponse: true, // 我回复对方
@@ -112,21 +131,30 @@ class ResponseTimeAnalyzer {
       onLog: onLog,
     );
 
-    onLog?.call('DatabaseService.analyzeResponseSpeed 返回 ${sqlResults.length} 条结果', level: 'debug');
+    onLog?.call(
+      'DatabaseService.analyzeResponseSpeed 返回 ${sqlResults.length} 条结果',
+      level: 'debug',
+    );
 
-    final results = sqlResults.map((data) => ResponseTimeResult(
-      username: data['username'] as String,
-      displayName: data['displayName'] as String,
-      avgResponseTimeMinutes: data['avgResponseTimeMinutes'] as double,
-      totalResponses: data['totalResponses'] as int,
-      fastestResponseMinutes: data['fastestResponseMinutes'] as double,
-      slowestResponseMinutes: data['slowestResponseMinutes'] as double,
-    )).toList();
+    final results = sqlResults
+        .map(
+          (data) => ResponseTimeResult(
+            username: data['username'] as String,
+            displayName: data['displayName'] as String,
+            avgResponseTimeMinutes: data['avgResponseTimeMinutes'] as double,
+            totalResponses: data['totalResponses'] as int,
+            fastestResponseMinutes: data['fastestResponseMinutes'] as double,
+            slowestResponseMinutes: data['slowestResponseMinutes'] as double,
+          ),
+        )
+        .toList();
 
     onProgress?.call(1, 1, '分析完成');
-    onLog?.call('转换为 ResponseTimeResult 对象完成，共 ${results.length} 个', level: 'debug');
+    onLog?.call(
+      '转换为 ResponseTimeResult 对象完成，共 ${results.length} 个',
+      level: 'debug',
+    );
 
     return results;
   }
 }
-

@@ -31,24 +31,24 @@ class ImageService {
       final normalizedPath = PathUtils.normalizeDatabasePath(hardlinkPath);
       _hardlinkDb = await databaseFactory.openDatabase(
         normalizedPath,
-        options: OpenDatabaseOptions(
-          readOnly: true,
-          singleInstance: false,
-        ),
+        options: OpenDatabaseOptions(readOnly: true, singleInstance: false),
       );
 
       // 动态查询图片表名
       final imageTables = await _hardlinkDb!.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'image_hardlink_info%' ORDER BY name DESC"
+        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'image_hardlink_info%' ORDER BY name DESC",
       );
-      _imageTableName = imageTables.isNotEmpty ? imageTables.first['name'] as String? : null;
+      _imageTableName = imageTables.isNotEmpty
+          ? imageTables.first['name'] as String?
+          : null;
 
       // 动态查询目录表名
       final dirTables = await _hardlinkDb!.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'dir2id%'"
+        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'dir2id%'",
       );
-      _dir2idTableName = dirTables.isNotEmpty ? dirTables.first['name'] as String? : null;
-
+      _dir2idTableName = dirTables.isNotEmpty
+          ? dirTables.first['name'] as String?
+          : null;
     } catch (e) {
       // 连接失败
     }
@@ -68,12 +68,15 @@ class ImageService {
       }
 
       // 使用动态表名查询
-      final rows = await _hardlinkDb!.rawQuery('''
+      final rows = await _hardlinkDb!.rawQuery(
+        '''
         SELECT dir1, dir2, file_name 
         FROM $_imageTableName 
         WHERE md5 = ?
         LIMIT 1
-      ''', [md5]);
+      ''',
+        [md5],
+      );
 
       if (rows.isEmpty) {
         return null;
@@ -92,12 +95,15 @@ class ImageService {
       String dirName = dir2;
       if (_dir2idTableName != null) {
         try {
-          final dirRows = await _hardlinkDb!.rawQuery('''
+          final dirRows = await _hardlinkDb!.rawQuery(
+            '''
             SELECT dir_name 
             FROM $_dir2idTableName 
             WHERE dir_id = ? AND username = ?
             LIMIT 1
-          ''', [dir2, username]);
+          ''',
+            [dir2, username],
+          );
 
           if (dirRows.isNotEmpty) {
             dirName = dirRows.first['dir_name'] as String? ?? dir2;
@@ -128,4 +134,3 @@ class ImageService {
     _hardlinkDb = null;
   }
 }
-

@@ -36,9 +36,7 @@ class GoDecryptFFI {
   /// 加载 Windows DLL
   ffi.DynamicLibrary _loadWindowsDLL() {
     // 尝试的位置列表
-    final locations = [
-      'go_decrypt.dll', 
-    ];
+    final locations = ['go_decrypt.dll'];
 
     // 收集所有错误信息
     final errors = <String>[];
@@ -73,7 +71,9 @@ class GoDecryptFFI {
         .lookup<ffi.NativeFunction<_ForceUnlockFileFFI>>('ForceUnlockFile')
         .asFunction();
     _closeSelfFileHandles = _dylib
-        .lookup<ffi.NativeFunction<_CloseSelfFileHandlesFFI>>('CloseSelfFileHandles')
+        .lookup<ffi.NativeFunction<_CloseSelfFileHandlesFFI>>(
+          'CloseSelfFileHandles',
+        )
         .asFunction();
     _freeString = _dylib
         .lookup<ffi.NativeFunction<_FreeStringFFI>>('FreeString')
@@ -183,39 +183,36 @@ class GoDecryptFFI {
 }
 
 // FFI 类型定义
-typedef _ValidateKeyFFI = ffi.Int32 Function(
-  ffi.Pointer<ffi.Char> dbPath,
-  ffi.Pointer<ffi.Char> hexKey,
-);
-typedef _ValidateKeyNative = int Function(
-  ffi.Pointer<ffi.Char> dbPath,
-  ffi.Pointer<ffi.Char> hexKey,
-);
+typedef _ValidateKeyFFI =
+    ffi.Int32 Function(
+      ffi.Pointer<ffi.Char> dbPath,
+      ffi.Pointer<ffi.Char> hexKey,
+    );
+typedef _ValidateKeyNative =
+    int Function(ffi.Pointer<ffi.Char> dbPath, ffi.Pointer<ffi.Char> hexKey);
 
-typedef _DecryptDatabaseFFI = ffi.Pointer<ffi.Char> Function(
-  ffi.Pointer<ffi.Char> inputPath,
-  ffi.Pointer<ffi.Char> outputPath,
-  ffi.Pointer<ffi.Char> hexKey,
-);
-typedef _DecryptDatabaseNative = ffi.Pointer<ffi.Char> Function(
-  ffi.Pointer<ffi.Char> inputPath,
-  ffi.Pointer<ffi.Char> outputPath,
-  ffi.Pointer<ffi.Char> hexKey,
-);
+typedef _DecryptDatabaseFFI =
+    ffi.Pointer<ffi.Char> Function(
+      ffi.Pointer<ffi.Char> inputPath,
+      ffi.Pointer<ffi.Char> outputPath,
+      ffi.Pointer<ffi.Char> hexKey,
+    );
+typedef _DecryptDatabaseNative =
+    ffi.Pointer<ffi.Char> Function(
+      ffi.Pointer<ffi.Char> inputPath,
+      ffi.Pointer<ffi.Char> outputPath,
+      ffi.Pointer<ffi.Char> hexKey,
+    );
 
-typedef _ForceUnlockFileFFI = ffi.Pointer<ffi.Char> Function(
-  ffi.Pointer<ffi.Char> filePath,
-);
-typedef _ForceUnlockFileNative = ffi.Pointer<ffi.Char> Function(
-  ffi.Pointer<ffi.Char> filePath,
-);
+typedef _ForceUnlockFileFFI =
+    ffi.Pointer<ffi.Char> Function(ffi.Pointer<ffi.Char> filePath);
+typedef _ForceUnlockFileNative =
+    ffi.Pointer<ffi.Char> Function(ffi.Pointer<ffi.Char> filePath);
 
-typedef _CloseSelfFileHandlesFFI = ffi.Pointer<ffi.Char> Function(
-  ffi.Pointer<ffi.Char> filePath,
-);
-typedef _CloseSelfFileHandlesNative = ffi.Pointer<ffi.Char> Function(
-  ffi.Pointer<ffi.Char> filePath,
-);
+typedef _CloseSelfFileHandlesFFI =
+    ffi.Pointer<ffi.Char> Function(ffi.Pointer<ffi.Char> filePath);
+typedef _CloseSelfFileHandlesNative =
+    ffi.Pointer<ffi.Char> Function(ffi.Pointer<ffi.Char> filePath);
 
 typedef _FreeStringFFI = ffi.Void Function(ffi.Pointer<ffi.Char> str);
 typedef _FreeStringNative = void Function(ffi.Pointer<ffi.Char> str);

@@ -25,9 +25,9 @@ class ConversationBalanceWidget extends StatelessWidget {
           displayName,
           balance.receivedCount,
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // 字数对比
         _buildComparisonBar(
           context,
@@ -37,9 +37,9 @@ class ConversationBalanceWidget extends StatelessWidget {
           displayName,
           balance.receivedWords,
         ),
-        
+
         const SizedBox(height: 16),
-        
+
         // 对话段主动性对比（基于超过20分钟的间隔统计）
         _buildComparisonBar(
           context,
@@ -49,9 +49,9 @@ class ConversationBalanceWidget extends StatelessWidget {
           displayName,
           balance.segmentsInitiatedByOther,
         ),
-        
+
         const SizedBox(height: 12),
-        
+
         // 对话段统计信息
         Container(
           padding: const EdgeInsets.all(12),
@@ -75,18 +75,11 @@ class ConversationBalanceWidget extends StatelessWidget {
                   ),
                   Text(
                     '总对话段',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],
               ),
-              Container(
-                width: 1,
-                height: 40,
-                color: Colors.grey[300],
-              ),
+              Container(width: 1, height: 40, color: Colors.grey[300]),
               Column(
                 children: [
                   Text(
@@ -99,18 +92,11 @@ class ConversationBalanceWidget extends StatelessWidget {
                   ),
                   Text(
                     '我发起',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],
               ),
-              Container(
-                width: 1,
-                height: 40,
-                color: Colors.grey[300],
-              ),
+              Container(width: 1, height: 40, color: Colors.grey[300]),
               Column(
                 children: [
                   Text(
@@ -123,19 +109,16 @@ class ConversationBalanceWidget extends StatelessWidget {
                   ),
                   Text(
                     'TA发起',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],
               ),
             ],
           ),
         ),
-        
+
         const SizedBox(height: 24),
-        
+
         // 结论
         _buildConclusion(context),
       ],
@@ -152,18 +135,18 @@ class ConversationBalanceWidget extends StatelessWidget {
   ) {
     final total = leftValue + rightValue;
     final leftRatio = total > 0 ? leftValue / total : 0.5;
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            fontWeight: FontWeight.w500,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
         ),
         const SizedBox(height: 8),
-        
+
         Row(
           children: [
             // 我的数值
@@ -179,9 +162,9 @@ class ConversationBalanceWidget extends StatelessWidget {
                 ),
               ),
             ),
-            
+
             const SizedBox(width: 12),
-            
+
             // 对比条
             Expanded(
               child: Stack(
@@ -194,7 +177,7 @@ class ConversationBalanceWidget extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  
+
                   // 左侧（我）
                   FractionallySizedBox(
                     widthFactor: leftRatio,
@@ -206,7 +189,7 @@ class ConversationBalanceWidget extends StatelessWidget {
                       ),
                     ),
                   ),
-                  
+
                   // 中间分割线
                   Positioned(
                     left: 0,
@@ -222,9 +205,9 @@ class ConversationBalanceWidget extends StatelessWidget {
                 ],
               ),
             ),
-            
+
             const SizedBox(width: 12),
-            
+
             // 对方的数值
             SizedBox(
               width: 80,
@@ -240,9 +223,9 @@ class ConversationBalanceWidget extends StatelessWidget {
             ),
           ],
         ),
-        
+
         const SizedBox(height: 4),
-        
+
         // 标签
         Row(
           children: [
@@ -260,9 +243,9 @@ class ConversationBalanceWidget extends StatelessWidget {
                   ),
                   Text(
                     rightLabel,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey[600],
-                    ),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
                   ),
                 ],
               ),
@@ -281,7 +264,7 @@ class ConversationBalanceWidget extends StatelessWidget {
     Color color;
 
     final moreActive = balance.moreActive;
-    
+
     if (moreActive == 'me') {
       conclusion = '你是这段关系中更主动的"话痨" 😊';
       icon = Icons.chat_bubble;
@@ -301,10 +284,7 @@ class ConversationBalanceWidget extends StatelessWidget {
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withOpacity(0.3),
-          width: 1,
-        ),
+        border: Border.all(color: color.withOpacity(0.3), width: 1),
       ),
       child: Row(
         children: [
@@ -324,4 +304,3 @@ class ConversationBalanceWidget extends StatelessWidget {
     );
   }
 }
-

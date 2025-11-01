@@ -33,8 +33,7 @@ class AnalyticsCacheService {
       await prefs.setString(_keyBasicAnalytics, json.encode(data));
       await prefs.setString(_keyCachedAt, DateTime.now().toIso8601String());
       await prefs.setInt(_keyDbModifiedTime, dbModifiedTime);
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   /// 读取基础分析结果
@@ -43,7 +42,7 @@ class AnalyticsCacheService {
       final prefs = await SharedPreferences.getInstance();
       final dataString = prefs.getString(_keyBasicAnalytics);
       if (dataString == null) return null;
-      
+
       final data = json.decode(dataString);
       return deserializeBasicResults(data);
     } catch (e) {
@@ -70,8 +69,7 @@ class AnalyticsCacheService {
       await prefs.setString(_keyAnnualReport, json.encode(data));
       await prefs.setString(_keyCachedAt, DateTime.now().toIso8601String());
       await prefs.setInt(_keyDbModifiedTime, dbModifiedTime);
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   /// 读取年度报告结果
@@ -80,7 +78,7 @@ class AnalyticsCacheService {
       final prefs = await SharedPreferences.getInstance();
       final dataString = prefs.getString(_keyAnnualReport);
       if (dataString == null) return null;
-      
+
       final data = json.decode(dataString);
       return deserializeResults(data);
     } catch (e) {
@@ -95,8 +93,7 @@ class AnalyticsCacheService {
       await prefs.remove(_keyBasicAnalytics);
       await prefs.remove(_keyAnnualReport);
       await prefs.remove(_keyCachedAt);
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   /// 清除基础分析缓存
@@ -104,8 +101,7 @@ class AnalyticsCacheService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_keyBasicAnalytics);
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   /// 清除年度报告缓存
@@ -113,8 +109,7 @@ class AnalyticsCacheService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_keyAnnualReport);
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   /// 检查数据库是否发生变化
@@ -122,9 +117,9 @@ class AnalyticsCacheService {
     try {
       final prefs = await SharedPreferences.getInstance();
       final cachedTime = prefs.getInt(_keyDbModifiedTime);
-      
+
       if (cachedTime == null) return true; // 没有缓存，认为已变化
-      
+
       return cachedTime != currentDbModifiedTime;
     } catch (e) {
       return true; // 出错时认为已变化
@@ -138,7 +133,7 @@ class AnalyticsCacheService {
       final hasBasic = prefs.containsKey(_keyBasicAnalytics);
       final hasReport = prefs.containsKey(_keyAnnualReport);
       final cachedAtString = prefs.getString(_keyCachedAt);
-      
+
       if (!hasBasic && !hasReport) return null;
 
       DateTime? cachedAt;
@@ -150,8 +145,8 @@ class AnalyticsCacheService {
         'hasBasicAnalytics': hasBasic,
         'hasAnnualReport': hasReport,
         'cachedAt': cachedAtString,
-        'age': cachedAt != null 
-            ? DateTime.now().difference(cachedAt).inMinutes 
+        'age': cachedAt != null
+            ? DateTime.now().difference(cachedAt).inMinutes
             : null,
       };
     } catch (e) {
@@ -177,11 +172,11 @@ class AnalyticsCacheService {
   /// 反序列化年度报告结果
   static Map<String, dynamic> deserializeResults(Map<String, dynamic> data) {
     return {
-      'activityHeatmap': data['activityHeatmap'] != null 
-          ? ActivityHeatmap.fromJson(data['activityHeatmap']) 
+      'activityHeatmap': data['activityHeatmap'] != null
+          ? ActivityHeatmap.fromJson(data['activityHeatmap'])
           : null,
-      'linguisticStyle': data['linguisticStyle'] != null 
-          ? LinguisticStyle.fromJson(data['linguisticStyle']) 
+      'linguisticStyle': data['linguisticStyle'] != null
+          ? LinguisticStyle.fromJson(data['linguisticStyle'])
           : null,
       'hahaReport': data['hahaReport'],
       'midnightKing': data['midnightKing'],
@@ -200,13 +195,17 @@ class AnalyticsCacheService {
   }
 
   /// 反序列化基础分析结果
-  static Map<String, dynamic> deserializeBasicResults(Map<String, dynamic> data) {
+  static Map<String, dynamic> deserializeBasicResults(
+    Map<String, dynamic> data,
+  ) {
     return {
-      'overallStats': data['overallStats'] != null 
-          ? ChatStatistics.fromJson(data['overallStats']) 
+      'overallStats': data['overallStats'] != null
+          ? ChatStatistics.fromJson(data['overallStats'])
           : null,
-      'contactRankings': data['contactRankings'] != null 
-          ? (data['contactRankings'] as List).map((r) => ContactRanking.fromJson(r)).toList()
+      'contactRankings': data['contactRankings'] != null
+          ? (data['contactRankings'] as List)
+                .map((r) => ContactRanking.fromJson(r))
+                .toList()
           : null,
     };
   }

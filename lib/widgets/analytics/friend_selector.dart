@@ -25,7 +25,7 @@ class FriendSelector extends StatelessWidget {
         itemBuilder: (context, index) {
           final friend = friends[index];
           final isSelected = friend.username == selectedFriend;
-          
+
           return Padding(
             padding: const EdgeInsets.only(right: 16),
             child: _FriendCard(
@@ -111,11 +111,7 @@ class _FriendCardState extends State<_FriendCard> {
                       : Theme.of(context).colorScheme.primary.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(24),
                 ),
-                child: Icon(
-                  Icons.person,
-                  color: Colors.white,
-                  size: 28,
-                ),
+                child: Icon(Icons.person, color: Colors.white, size: 28),
               ),
               const SizedBox(height: 8),
               Padding(
@@ -124,7 +120,9 @@ class _FriendCardState extends State<_FriendCard> {
                   widget.displayName,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Colors.white,
-                    fontWeight: widget.isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontWeight: widget.isSelected
+                        ? FontWeight.bold
+                        : FontWeight.normal,
                   ),
                   maxLines: 2,
                   textAlign: TextAlign.center,
@@ -138,4 +136,3 @@ class _FriendCardState extends State<_FriendCard> {
     );
   }
 }
-

@@ -37,19 +37,19 @@ class _ImageMessageWidgetState extends State<ImageMessageWidget> {
     try {
       final appState = context.read<AppState>();
       final imageService = ImageService();
-      
+
       // 初始化图片服务
       final dataPath = appState.databaseService.currentDataPath;
       if (dataPath != null) {
         await imageService.init(dataPath);
-        
+
         // 获取图片路径
         if (widget.message.imageMd5 != null) {
           final path = await imageService.getImagePath(
             widget.message.imageMd5!,
             widget.sessionUsername,
           );
-          
+
           if (mounted) {
             setState(() {
               _imagePath = path;
@@ -65,7 +65,7 @@ class _ImageMessageWidgetState extends State<ImageMessageWidget> {
             });
           }
         }
-        
+
         await imageService.dispose();
       }
     } catch (e) {
@@ -88,9 +88,7 @@ class _ImageMessageWidgetState extends State<ImageMessageWidget> {
           color: Colors.grey[200],
           borderRadius: BorderRadius.circular(6),
         ),
-        child: const Center(
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
+        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
       );
     }
 
@@ -192,7 +190,11 @@ class _ImageMessageWidgetState extends State<ImageMessageWidget> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.broken_image, size: 64, color: Colors.white),
+                          Icon(
+                            Icons.broken_image,
+                            size: 64,
+                            color: Colors.white,
+                          ),
                           SizedBox(height: 16),
                           Text(
                             '无法显示图片',
@@ -211,4 +213,3 @@ class _ImageMessageWidgetState extends State<ImageMessageWidget> {
     );
   }
 }
-

@@ -18,30 +18,31 @@ class DataManagementPage extends StatefulWidget {
   State<DataManagementPage> createState() => _DataManagementPageState();
 }
 
-class _DataManagementPageState extends State<DataManagementPage> with SingleTickerProviderStateMixin {
+class _DataManagementPageState extends State<DataManagementPage>
+    with SingleTickerProviderStateMixin {
   final ConfigService _configService = ConfigService();
   late final DecryptService _decryptService;
   late final ImageDecryptService _imageDecryptService;
   late final TabController _tabController;
-  
+
   // 数据库文件相关
   List<DatabaseFile> _databaseFiles = [];
   bool _isLoading = false;
   String? _statusMessage;
   bool _isSuccess = false;
   String? _derivedKey; // 缓存派生后的密钥
-  
+
   // 数据库解密进度相关
   bool _isDecrypting = false;
   int _totalFiles = 0;
   int _completedFiles = 0;
   String _currentDecryptingFile = '';
   Map<String, bool> _decryptResults = {}; // 记录每个文件的解密结果
-  
+
   // 单个文件解密进度
   int _currentFilePages = 0;
   int _totalFilePages = 0;
-  
+
   // 进度节流相关
   final Map<String, DateTime> _lastProgressUpdateMap = {}; // 每个文件独立的节流时间戳
 
@@ -53,7 +54,7 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
   bool _showOnlyUndecrypted = false; // 只显示未解密的文件
   int _displayLimit = 1000; // 默认显示前1000条
   String _imageQualityFilter = 'all'; // 'all', 'original', 'thumbnail' - 图片质量过滤
-  
+
   // 图片解密进度相关
   bool _isDecryptingImages = false;
   int _totalImageFiles = 0;
@@ -89,26 +90,25 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
     try {
       final documentsDir = await getApplicationDocumentsDirectory();
       final documentsPath = documentsDir.path;
-      
+
       // 优先使用用户配置的数据库路径
       String? configuredPath = await _configService.getDatabasePath();
-      
+
       _databaseFiles.clear();
 
       // 如果没有配置路径，使用默认路径
       if (configuredPath == null || configuredPath.isEmpty) {
         configuredPath = '$documentsPath${Platform.pathSeparator}xwechat_files';
       }
-      
+
       // 智能识别路径类型并扫描数据库
       await _scanDatabasePath(configuredPath, documentsPath);
 
       // 按文件大小排序，小的在前
       _databaseFiles.sort((a, b) => a.fileSize.compareTo(b.fileSize));
-      
+
       // 清理上次更新时重命名的旧文件（.old.* 后缀）
       await _cleanupOldRenamedFiles(documentsPath);
-      
     } catch (e, stackTrace) {
       await logger.error('DataManagementPage', '加载数据库文件失败', e, stackTrace);
       _showMessage('加载数据库文件失败: $e', false);
@@ -126,37 +126,47 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
     try {
       await logger.info('DataManagementPage', '开始清理重命名的旧文件（.old.* 后缀）');
       int cleanedCount = 0;
-      
+
       // 扫描 EchoTrace 目录下所有的账号文件夹
-      final echoTraceDir = Directory('$documentsPath${Platform.pathSeparator}EchoTrace');
+      final echoTraceDir = Directory(
+        '$documentsPath${Platform.pathSeparator}EchoTrace',
+      );
       if (!await echoTraceDir.exists()) {
         await logger.info('DataManagementPage', 'EchoTrace 目录不存在，跳过清理');
         return;
       }
-      
+
       await for (final accountEntity in echoTraceDir.list()) {
         if (accountEntity is! Directory) continue;
-        
-        final accountDirName = accountEntity.path.split(Platform.pathSeparator).last;
-        
+
+        final accountDirName = accountEntity.path
+            .split(Platform.pathSeparator)
+            .last;
+
         // 扫描该账号目录下的所有 .old.* 文件
         await for (final fileEntity in accountEntity.list()) {
           if (fileEntity is! File) continue;
-          
+
           final fileName = fileEntity.path.split(Platform.pathSeparator).last;
           if (fileName.contains('.old.')) {
             try {
               await fileEntity.delete();
               cleanedCount++;
-              await logger.info('DataManagementPage', '已删除旧文件: $fileName (账号: $accountDirName)');
+              await logger.info(
+                'DataManagementPage',
+                '已删除旧文件: $fileName (账号: $accountDirName)',
+              );
             } catch (e) {
-              await logger.warning('DataManagementPage', '无法删除旧文件 $fileName: $e');
+              await logger.warning(
+                'DataManagementPage',
+                '无法删除旧文件 $fileName: $e',
+              );
               // 如果文件仍被占用，下次启动时再试
             }
           }
         }
       }
-      
+
       if (cleanedCount > 0) {
         await logger.info('DataManagementPage', '清理完成，共删除 $cleanedCount 个旧文件');
       } else {
@@ -201,45 +211,63 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
         final parentDirName = pathParts[pathParts.length - 2];
         accountName = _cleanAccountDirName(parentDirName);
       }
-      
+
       await _scanDbStorageDirectory(baseDir, accountName, documentsPath);
-      
     } else {
       // 情况2和3：扫描该目录下所有包含 db_storage 子文件夹的子目录
       // 这样可以兼容 wxid_xxx 格式和新版微信的其他命名格式
       bool foundAnyAccount = false;
-      
+
       await for (final entity in baseDir.list()) {
         if (entity is! Directory) continue;
-        
+
         final accountDirName = entity.path.split(Platform.pathSeparator).last;
         final cleanedAccountName = _cleanAccountDirName(accountDirName);
-        final dbStoragePath = '${entity.path}${Platform.pathSeparator}db_storage';
+        final dbStoragePath =
+            '${entity.path}${Platform.pathSeparator}db_storage';
         final dbStorageDir = Directory(dbStoragePath);
-        
+
         // 检查是否存在 db_storage 子文件夹
         if (await dbStorageDir.exists()) {
           foundAnyAccount = true;
-          await logger.info('DataManagementPage', '发现账号目录: $accountDirName -> 清理后: $cleanedAccountName (包含 db_storage)');
-          await _scanDbStorageDirectory(dbStorageDir, cleanedAccountName, documentsPath);
+          await logger.info(
+            'DataManagementPage',
+            '发现账号目录: $accountDirName -> 清理后: $cleanedAccountName (包含 db_storage)',
+          );
+          await _scanDbStorageDirectory(
+            dbStorageDir,
+            cleanedAccountName,
+            documentsPath,
+          );
         }
       }
-      
+
       // 如果没有找到任何账号目录，尝试使用手动输入的wxid
       if (!foundAnyAccount) {
         final manualWxid = await _configService.getManualWxid();
         if (manualWxid != null && manualWxid.isNotEmpty) {
-          await logger.info('DataManagementPage', '未找到账号目录，使用手动输入的wxid: $manualWxid');
+          await logger.info(
+            'DataManagementPage',
+            '未找到账号目录，使用手动输入的wxid: $manualWxid',
+          );
           // 查找该wxid对应的db_storage目录
           await for (final entity in baseDir.list()) {
             if (entity is! Directory) continue;
-            
-            final dbStoragePath = '${entity.path}${Platform.pathSeparator}db_storage';
+
+            final dbStoragePath =
+                '${entity.path}${Platform.pathSeparator}db_storage';
             final dbStorageDir = Directory(dbStoragePath);
-            
+
             if (await dbStorageDir.exists()) {
-              await logger.info('DataManagementPage', '使用手动wxid扫描数据库: $manualWxid');
-              await _scanDbStorageDirectory(dbStorageDir, manualWxid, documentsPath);
+              await logger.info(
+                'DataManagementPage',
+                '使用手动wxid扫描数据库: $manualWxid',
+              );
+              await _scanDbStorageDirectory(
+                dbStorageDir,
+                manualWxid,
+                documentsPath,
+              );
               break;
             }
           }
@@ -249,66 +277,76 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
   }
 
   /// 扫描 db_storage 目录下的所有数据库文件
-  Future<void> _scanDbStorageDirectory(Directory dbStorageDir, String accountName, String documentsPath) async {
+  Future<void> _scanDbStorageDirectory(
+    Directory dbStorageDir,
+    String accountName,
+    String documentsPath,
+  ) async {
     // 递归查找所有 .db 文件
     final dbFiles = await _findAllDbFiles(dbStorageDir);
-    
+
     for (final dbFile in dbFiles) {
       final fileName = dbFile.path.split(Platform.pathSeparator).last;
       final fileSize = await dbFile.length();
-      
+
       // 获取源文件修改时间
       final originalStat = await dbFile.stat();
       final originalModified = originalStat.modified;
-      
+
       // 检查是否已经解密
-      final ourWorkDir = Directory('$documentsPath${Platform.pathSeparator}EchoTrace');
+      final ourWorkDir = Directory(
+        '$documentsPath${Platform.pathSeparator}EchoTrace',
+      );
       final decryptedFileName = '${fileName.split('.').first}.db';
-      final decryptedFilePath = '${ourWorkDir.path}${Platform.pathSeparator}$accountName${Platform.pathSeparator}$decryptedFileName';
+      final decryptedFilePath =
+          '${ourWorkDir.path}${Platform.pathSeparator}$accountName${Platform.pathSeparator}$decryptedFileName';
       final decryptedFile = File(decryptedFilePath);
-      
+
       final isDecrypted = await decryptedFile.exists();
       DateTime? decryptedModified;
-      
+
       if (isDecrypted) {
         // 获取备份文件修改时间
         final decryptedStat = await decryptedFile.stat();
         decryptedModified = decryptedStat.modified;
       }
-      
-      _databaseFiles.add(DatabaseFile(
-        originalPath: dbFile.path,
-        fileName: fileName,
-        fileSize: fileSize,
-        wxidName: accountName,
-        isDecrypted: isDecrypted,
-        decryptedPath: decryptedFilePath,
-        originalModified: originalModified,
-        decryptedModified: decryptedModified,
-      ));
+
+      _databaseFiles.add(
+        DatabaseFile(
+          originalPath: dbFile.path,
+          fileName: fileName,
+          fileSize: fileSize,
+          wxidName: accountName,
+          isDecrypted: isDecrypted,
+          decryptedPath: decryptedFilePath,
+          originalModified: originalModified,
+          decryptedModified: decryptedModified,
+        ),
+      );
     }
   }
 
   /// 递归查找所有 .db 文件
   Future<List<File>> _findAllDbFiles(Directory dir) async {
     final List<File> dbFiles = [];
-    
+
     try {
       await for (final entity in dir.list(recursive: true)) {
         if (entity is File && entity.path.endsWith('.db')) {
           dbFiles.add(entity);
         }
       }
-    } catch (e) {
-    }
-    
+    } catch (e) {}
+
     return dbFiles;
   }
 
   /// 批量解密未解密的文件
   Future<void> _decryptAllPending() async {
-    final pendingFiles = _databaseFiles.where((file) => !file.isDecrypted).toList();
-    
+    final pendingFiles = _databaseFiles
+        .where((file) => !file.isDecrypted)
+        .toList();
+
     if (pendingFiles.isEmpty) {
       _showMessage('所有文件都已解密！', true);
       return;
@@ -334,9 +372,11 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
 
       // 派生密钥（只计算一次）
       if (_derivedKey == null) {
-        _derivedKey = await _deriveKeyOnce(key, pendingFiles.first.originalPath);
+        _derivedKey = await _deriveKeyOnce(
+          key,
+          pendingFiles.first.originalPath,
+        );
       }
-
 
       // 步骤1：强制清理所有页面状态
       if (mounted) {
@@ -362,7 +402,10 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
       await logger.info('DataManagementPage', '文件句柄释放完成');
 
       // 步骤4：关闭当前进程中所有指向待解密文件的句柄
-      await logger.info('DataManagementPage', '步骤4: 关闭当前进程的 ${pendingFiles.length} 个数据库文件句柄...');
+      await logger.info(
+        'DataManagementPage',
+        '步骤4: 关闭当前进程的 ${pendingFiles.length} 个数据库文件句柄...',
+      );
       final goFfi = GoDecryptFFI();
       int closedCount = 0;
       for (final file in pendingFiles) {
@@ -370,15 +413,28 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
           final error = goFfi.closeSelfFileHandles(file.originalPath);
           if (error == null) {
             closedCount++;
-            await logger.info('DataManagementPage', '成功关闭文件句柄: ${file.fileName}');
+            await logger.info(
+              'DataManagementPage',
+              '成功关闭文件句柄: ${file.fileName}',
+            );
           } else {
-            await logger.warning('DataManagementPage', '关闭文件句柄失败: ${file.fileName}, 错误: $error');
+            await logger.warning(
+              'DataManagementPage',
+              '关闭文件句柄失败: ${file.fileName}, 错误: $error',
+            );
           }
         } catch (e) {
-          await logger.warning('DataManagementPage', '关闭文件句柄时出错: ${file.fileName}', e);
+          await logger.warning(
+            'DataManagementPage',
+            '关闭文件句柄时出错: ${file.fileName}',
+            e,
+          );
         }
       }
-      await logger.info('DataManagementPage', '文件句柄关闭完成，成功关闭 $closedCount/${pendingFiles.length} 个文件');
+      await logger.info(
+        'DataManagementPage',
+        '文件句柄关闭完成，成功关闭 $closedCount/${pendingFiles.length} 个文件',
+      );
 
       // 再等待一小段时间，确保文件句柄完全释放
       await Future.delayed(const Duration(milliseconds: 500));
@@ -397,16 +453,19 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
           // 解密（添加进度节流，避免频繁setState）
           DateTime? lastUpdate;
           final decryptedPath = await _decryptService.decryptDatabase(
-            file.originalPath, 
-            key, 
+            file.originalPath,
+            key,
             (current, total) {
               // 节流：每100ms最多更新一次UI
               final now = DateTime.now();
-              if (lastUpdate == null || now.difference(lastUpdate!).inMilliseconds > 100) {
+              if (lastUpdate == null ||
+                  now.difference(lastUpdate!).inMilliseconds > 100) {
                 lastUpdate = now;
                 if (mounted) {
                   setState(() {
-                    final index = _databaseFiles.indexWhere((f) => f.originalPath == file.originalPath);
+                    final index = _databaseFiles.indexWhere(
+                      (f) => f.originalPath == file.originalPath,
+                    );
                     if (index != -1) {
                       _databaseFiles[index].decryptProgress = current / total;
                     }
@@ -415,7 +474,7 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
               }
             },
           );
-          
+
           // 验证临时文件
           final tempFile = File(decryptedPath);
           if (!await tempFile.exists()) {
@@ -445,17 +504,17 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                 }
               }
             }
-            
+
             // 如果删除失败，尝试强制解锁文件
             if (!deleteSucceeded && await targetFile.exists()) {
               try {
                 // 使用 Windows Restart Manager API 强制关闭文件句柄
                 final goFfi = GoDecryptFFI();
                 final unlockError = goFfi.forceUnlockFile(file.decryptedPath);
-                
+
                 if (unlockError == null) {
                   await Future.delayed(const Duration(milliseconds: 500));
-                  
+
                   // 再次尝试删除
                   try {
                     await targetFile.delete();
@@ -467,10 +526,11 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
               } catch (e) {
                 // 强制解锁失败
               }
-              
+
               // 如果解锁后仍然无法删除，尝试重命名旧文件
               if (!deleteSucceeded && await targetFile.exists()) {
-                final oldPath = '${file.decryptedPath}.old.${DateTime.now().millisecondsSinceEpoch}';
+                final oldPath =
+                    '${file.decryptedPath}.old.${DateTime.now().millisecondsSinceEpoch}';
                 try {
                   await targetFile.rename(oldPath);
                 } catch (e) {
@@ -485,7 +545,9 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
 
           if (mounted) {
             setState(() {
-              final index = _databaseFiles.indexWhere((f) => f.originalPath == file.originalPath);
+              final index = _databaseFiles.indexWhere(
+                (f) => f.originalPath == file.originalPath,
+              );
               if (index != -1) {
                 _databaseFiles[index].isDecrypted = true;
                 _databaseFiles[index].decryptProgress = 1.0;
@@ -494,18 +556,25 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
               _decryptResults[file.fileName] = true;
             });
           }
-          
+
           // 清理临时文件
           Future.delayed(const Duration(milliseconds: 100), () async {
             try {
               await File(decryptedPath).delete();
-            } catch (e) { /* 忽略删除错误 */ }
+            } catch (e) {
+              /* 忽略删除错误 */
+            }
           });
 
           return true; // 成功
         } catch (e, stackTrace) {
           // 只在出错时记录日志
-          await logger.error('DataManagementPage', '解密文件 ${file.fileName} 失败', e, stackTrace);
+          await logger.error(
+            'DataManagementPage',
+            '解密文件 ${file.fileName} 失败',
+            e,
+            stackTrace,
+          );
           _lastProgressUpdateMap.remove(file.originalPath);
           _decryptResults[file.fileName] = false;
           return false; // 失败
@@ -538,15 +607,14 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
 
       // 手动刷新文件列表，确保状态（特别是isDecrypted）完全更新
       await _loadDatabaseFiles();
-      
     } catch (e, stackTrace) {
       await logger.error('DataManagementPage', '批量解密失败', e, stackTrace);
       _showMessage('批量解密失败: $e', false);
-      
+
       // 等待文件系统稳定
       await logger.info('DataManagementPage', '等待文件系统稳定...');
       await Future.delayed(const Duration(milliseconds: 2500));
-      
+
       // 即使失败也要尝试重新连接数据库
       if (mounted) {
         try {
@@ -578,13 +646,15 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
 
   /// 增量更新（只更新有变化的文件）
   Future<void> _updateChanged() async {
-    final filesToUpdate = _databaseFiles.where((file) => file.needsUpdate).toList();
-    
+    final filesToUpdate = _databaseFiles
+        .where((file) => file.needsUpdate)
+        .toList();
+
     if (filesToUpdate.isEmpty) {
       _showMessage('所有文件都是最新的！', true);
       return;
     }
-    
+
     // 警告用户确保没有后台任务
     if (mounted) {
       final shouldContinue = await showDialog<bool>(
@@ -598,7 +668,7 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
             '2. 没有打开年度报告页面\n'
             '3. 其他页面已停止使用数据库\n\n'
             '更新过程将等待约10秒以确保文件释放。\n'
-            '是否继续？'
+            '是否继续？',
           ),
           actions: [
             TextButton(
@@ -612,10 +682,10 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
           ],
         ),
       );
-      
+
       if (shouldContinue != true) return;
     }
-    
+
     if (!mounted) return;
     setState(() {
       _isDecrypting = true;
@@ -630,7 +700,7 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
         _showMessage('请先在设置页面配置密钥', false);
         return;
       }
-      
+
       // 步骤1：强制清理所有页面状态，确保没有页面在使用数据库
       if (mounted) {
         await logger.info('DataManagementPage', '步骤1: 导航到数据管理页面并清理其他页面');
@@ -638,19 +708,19 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
         // 通知所有页面停止数据库操作
         await Future.delayed(const Duration(milliseconds: 1000));
       }
-      
+
       // 步骤2：多次尝试关闭数据库连接，确保所有连接都被释放
       if (mounted) {
         await logger.info('DataManagementPage', '步骤2: 第1次关闭数据库连接（包括缓存）');
         await context.read<AppState>().databaseService.close();
         await Future.delayed(const Duration(milliseconds: 1000));
-        
+
         // 第二次关闭，确保清理
         await logger.info('DataManagementPage', '步骤2: 第2次关闭数据库连接（确保清理）');
         await context.read<AppState>().databaseService.close();
         await logger.info('DataManagementPage', '所有数据库连接已关闭');
       }
-      
+
       // 步骤3：等待足够长的时间让操作系统释放所有文件句柄
       // Windows 系统需要更长时间，特别是有多个进程/Isolate时
       await logger.info('DataManagementPage', '步骤3: 等待文件句柄完全释放（2秒）...');
@@ -659,7 +729,10 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
 
       // 步骤4：关闭当前进程中所有指向待更新文件的句柄
       // 直接关闭当前进程（包括 sqflite_ffi 后台 Isolate）中的文件句柄
-      await logger.info('DataManagementPage', '步骤4: 关闭当前进程的 ${filesToUpdate.length} 个数据库文件句柄...');
+      await logger.info(
+        'DataManagementPage',
+        '步骤4: 关闭当前进程的 ${filesToUpdate.length} 个数据库文件句柄...',
+      );
       final goFfi = GoDecryptFFI();
       int closedCount = 0;
       for (final file in filesToUpdate) {
@@ -667,15 +740,28 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
           final error = goFfi.closeSelfFileHandles(file.originalPath);
           if (error == null) {
             closedCount++;
-            await logger.info('DataManagementPage', '成功关闭文件句柄: ${file.fileName}');
+            await logger.info(
+              'DataManagementPage',
+              '成功关闭文件句柄: ${file.fileName}',
+            );
           } else {
-            await logger.warning('DataManagementPage', '关闭文件句柄失败: ${file.fileName}, 错误: $error');
+            await logger.warning(
+              'DataManagementPage',
+              '关闭文件句柄失败: ${file.fileName}, 错误: $error',
+            );
           }
         } catch (e) {
-          await logger.warning('DataManagementPage', '关闭文件句柄时出错: ${file.fileName}', e);
+          await logger.warning(
+            'DataManagementPage',
+            '关闭文件句柄时出错: ${file.fileName}',
+            e,
+          );
         }
       }
-      await logger.info('DataManagementPage', '文件句柄关闭完成，成功关闭 $closedCount/${filesToUpdate.length} 个文件');
+      await logger.info(
+        'DataManagementPage',
+        '文件句柄关闭完成，成功关闭 $closedCount/${filesToUpdate.length} 个文件',
+      );
 
       // 再等待一小段时间，确保文件句柄完全释放
       await Future.delayed(const Duration(milliseconds: 500));
@@ -690,25 +776,34 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
             });
           }
 
-          final decryptedPath = await _decryptService.decryptDatabase(file.originalPath, key, (current, total) {
-            if (mounted) {
-              setState(() {
-                final index = _databaseFiles.indexWhere((f) => f.originalPath == file.originalPath);
-                if (index != -1) {
-                  _databaseFiles[index].decryptProgress = current / total;
-                }
-              });
-            }
-          });
+          final decryptedPath = await _decryptService.decryptDatabase(
+            file.originalPath,
+            key,
+            (current, total) {
+              if (mounted) {
+                setState(() {
+                  final index = _databaseFiles.indexWhere(
+                    (f) => f.originalPath == file.originalPath,
+                  );
+                  if (index != -1) {
+                    _databaseFiles[index].decryptProgress = current / total;
+                  }
+                });
+              }
+            },
+          );
 
           // -- 更新成功后的文件操作 --
           await logger.info('DataManagementPage', '准备替换文件: ${file.fileName}');
           final targetFile = File(file.decryptedPath);
-          
+
           if (await targetFile.exists()) {
-            await logger.info('DataManagementPage', '目标文件已存在，尝试删除: ${file.decryptedPath}');
+            await logger.info(
+              'DataManagementPage',
+              '目标文件已存在，尝试删除: ${file.decryptedPath}',
+            );
             bool deleteSucceeded = false;
-            
+
             // 尝试删除10次
             for (int i = 0; i < 10; i++) {
               try {
@@ -719,27 +814,40 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
               } catch (e) {
                 if (i < 9) {
                   final delayMs = 300 * (i + 1);
-                  await logger.warning('DataManagementPage', '删除失败（尝试${i+1}/10），等待${delayMs}ms后重试: $e');
+                  await logger.warning(
+                    'DataManagementPage',
+                    '删除失败（尝试${i + 1}/10），等待${delayMs}ms后重试: $e',
+                  );
                   await Future.delayed(Duration(milliseconds: delayMs));
                 } else {
-                  await logger.error('DataManagementPage', '删除目标文件失败，已重试10次，尝试重命名方案', e);
+                  await logger.error(
+                    'DataManagementPage',
+                    '删除目标文件失败，已重试10次，尝试重命名方案',
+                    e,
+                  );
                 }
               }
             }
-            
+
             // 如果删除失败，尝试强制解锁文件
             if (!deleteSucceeded && await targetFile.exists()) {
-              await logger.warning('DataManagementPage', '无法删除文件（可能被其他进程占用），尝试强制解锁');
-              
+              await logger.warning(
+                'DataManagementPage',
+                '无法删除文件（可能被其他进程占用），尝试强制解锁',
+              );
+
               try {
                 // 使用 Windows Restart Manager API 强制关闭文件句柄
                 final goFfi = GoDecryptFFI();
                 final unlockError = goFfi.forceUnlockFile(file.decryptedPath);
-                
+
                 if (unlockError == null) {
-                  await logger.info('DataManagementPage', '文件解锁成功，等待500ms后重试删除');
+                  await logger.info(
+                    'DataManagementPage',
+                    '文件解锁成功，等待500ms后重试删除',
+                  );
                   await Future.delayed(const Duration(milliseconds: 500));
-                  
+
                   // 再次尝试删除
                   try {
                     await targetFile.delete();
@@ -749,43 +857,66 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                     await logger.warning('DataManagementPage', '解锁后删除仍然失败: $e');
                   }
                 } else {
-                  await logger.warning('DataManagementPage', '文件解锁失败: $unlockError');
+                  await logger.warning(
+                    'DataManagementPage',
+                    '文件解锁失败: $unlockError',
+                  );
                 }
               } catch (e) {
                 await logger.error('DataManagementPage', '强制解锁过程出错', e);
               }
-              
+
               // 如果解锁后仍然无法删除，尝试重命名旧文件
               if (!deleteSucceeded && await targetFile.exists()) {
-                await logger.warning('DataManagementPage', '强制解锁后仍无法删除，尝试重命名旧文件');
-                final oldPath = '${file.decryptedPath}.old.${DateTime.now().millisecondsSinceEpoch}';
-                
+                await logger.warning(
+                  'DataManagementPage',
+                  '强制解锁后仍无法删除，尝试重命名旧文件',
+                );
+                final oldPath =
+                    '${file.decryptedPath}.old.${DateTime.now().millisecondsSinceEpoch}';
+
                 try {
                   await targetFile.rename(oldPath);
-                  await logger.info('DataManagementPage', '旧文件已重命名为: $oldPath（将在下次启动时清理）');
+                  await logger.info(
+                    'DataManagementPage',
+                    '旧文件已重命名为: $oldPath（将在下次启动时清理）',
+                  );
                 } catch (e) {
-                  await logger.error('DataManagementPage', '重命名旧文件也失败，可能文件被严格锁定', e);
+                  await logger.error(
+                    'DataManagementPage',
+                    '重命名旧文件也失败，可能文件被严格锁定',
+                    e,
+                  );
                   // 即使重命名失败，也尝试复制新文件（可能会覆盖）
                 }
               }
             }
           }
-          
-          await logger.info('DataManagementPage', '复制新文件: $decryptedPath -> ${file.decryptedPath}');
+
+          await logger.info(
+            'DataManagementPage',
+            '复制新文件: $decryptedPath -> ${file.decryptedPath}',
+          );
           try {
             await File(decryptedPath).copy(file.decryptedPath);
             await logger.info('DataManagementPage', '文件复制成功: ${file.fileName}');
           } catch (e) {
-            await logger.error('DataManagementPage', '文件复制失败: ${file.fileName}', e);
+            await logger.error(
+              'DataManagementPage',
+              '文件复制失败: ${file.fileName}',
+              e,
+            );
             rethrow;
           }
-          
+
           final newStat = await File(file.decryptedPath).stat();
           _lastProgressUpdateMap.remove(file.originalPath);
-          
+
           if (mounted) {
             setState(() {
-              final index = _databaseFiles.indexWhere((f) => f.originalPath == file.originalPath);
+              final index = _databaseFiles.indexWhere(
+                (f) => f.originalPath == file.originalPath,
+              );
               if (index != -1) {
                 _databaseFiles[index].decryptProgress = 1.0;
                 _databaseFiles[index] = _databaseFiles[index].copyWith(
@@ -796,13 +927,14 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
               _decryptResults[file.fileName] = true;
             });
           }
-          
+
           Future.delayed(const Duration(milliseconds: 100), () async {
             try {
               await File(decryptedPath).delete();
-            } catch (e) { /* 忽略删除错误 */ }
+            } catch (e) {
+              /* 忽略删除错误 */
+            }
           });
-
         } catch (e) {
           _lastProgressUpdateMap.remove(file.originalPath);
           _decryptResults[file.fileName] = false;
@@ -812,11 +944,11 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
 
       final successCount = _decryptResults.values.where((v) => v).length;
       final failCount = _decryptResults.values.where((v) => !v).length;
-      
+
       // 等待文件系统完全释放文件句柄并刷新缓存
       await logger.info('DataManagementPage', '等待文件系统稳定...');
       await Future.delayed(const Duration(milliseconds: 2500));
-      
+
       // 重新连接数据库（增加重试次数和延迟）
       if (mounted) {
         await logger.info('DataManagementPage', '开始重新连接数据库...');
@@ -826,22 +958,24 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
         );
         await logger.info('DataManagementPage', '数据库重新连接完成');
       }
-      
+
       if (mounted) {
-        _showMessage('增量更新完成！成功: $successCount, 失败: $failCount', failCount == 0);
+        _showMessage(
+          '增量更新完成！成功: $successCount, 失败: $failCount',
+          failCount == 0,
+        );
       }
-      
+
       // 手动刷新文件列表
       await _loadDatabaseFiles();
-
     } catch (e, stackTrace) {
       await logger.error('DataManagementPage', '增量更新失败', e, stackTrace);
       _showMessage('增量更新失败: $e', false);
-      
+
       // 等待文件系统稳定
       await logger.info('DataManagementPage', '等待文件系统稳定...');
       await Future.delayed(const Duration(milliseconds: 2500));
-      
+
       // 即使失败也要尝试重新连接数据库
       if (mounted) {
         try {
@@ -887,34 +1021,39 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
         _showMessage('请先在设置页面配置密钥', false);
         return;
       }
-      
+
       // 先导航到当前页面，确保聊天页面不再使用数据库
       if (mounted) {
         context.read<AppState>().setCurrentPage('data_management');
         await Future.delayed(const Duration(milliseconds: 500));
       }
-      
+
       // 关闭数据库连接，避免文件占用
       if (mounted) {
         await context.read<AppState>().databaseService.close();
       }
-      
+
       // Windows 需要更长时间释放文件句柄，等待 2500ms
       await Future.delayed(const Duration(milliseconds: 2500));
-      
 
-      final decryptedPath = await _decryptService.decryptDatabase(file.originalPath, key, (current, total) {
-        if (mounted) {
-          _lastProgressUpdateMap[file.originalPath] = DateTime.now();
-          setState(() {
-            final index = _databaseFiles.indexWhere((f) => f.originalPath == file.originalPath);
-            if (index != -1) {
-              _databaseFiles[index].decryptProgress = current / total;
-            }
-          });
-        }
-      });
-      
+      final decryptedPath = await _decryptService.decryptDatabase(
+        file.originalPath,
+        key,
+        (current, total) {
+          if (mounted) {
+            _lastProgressUpdateMap[file.originalPath] = DateTime.now();
+            setState(() {
+              final index = _databaseFiles.indexWhere(
+                (f) => f.originalPath == file.originalPath,
+              );
+              if (index != -1) {
+                _databaseFiles[index].decryptProgress = current / total;
+              }
+            });
+          }
+        },
+      );
+
       // 验证临时文件
       final tempFile = File(decryptedPath);
       if (!await tempFile.exists()) {
@@ -927,7 +1066,7 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
       if (!await targetDir.exists()) {
         await targetDir.create(recursive: true);
       }
-      
+
       // 删除旧文件（如果存在，带重试机制）
       if (await targetFile.exists()) {
         for (int i = 0; i < 10; i++) {
@@ -944,26 +1083,28 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
           }
         }
       }
-      
+
       // 复制到目标位置
       await File(decryptedPath).copy(file.decryptedPath);
-      
+
       // 清理节流时间戳
       _lastProgressUpdateMap.remove(file.originalPath);
-      
+
       if (mounted) {
         setState(() {
-          final index = _databaseFiles.indexWhere((f) => f.originalPath == file.originalPath);
+          final index = _databaseFiles.indexWhere(
+            (f) => f.originalPath == file.originalPath,
+          );
           if (index != -1) {
             _databaseFiles[index].isDecrypted = true;
-             _databaseFiles[index].decryptProgress = 1.0;
+            _databaseFiles[index].decryptProgress = 1.0;
           }
         });
-        
+
         // 等待文件系统完全释放文件句柄并刷新缓存
         await logger.info('DataManagementPage', '等待文件系统稳定...');
         await Future.delayed(const Duration(milliseconds: 2500));
-        
+
         // 重新连接数据库（增加重试次数和延迟）
         await logger.info('DataManagementPage', '开始重新连接数据库...');
         await context.read<AppState>().reconnectDatabase(
@@ -971,10 +1112,10 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
           retryDelay: 1500,
         );
         await logger.info('DataManagementPage', '数据库重新连接完成');
-        
+
         _showMessage('解密成功: ${file.fileName}', true);
       }
-      
+
       // 异步清理临时文件（避免 Windows 文件句柄未释放的问题）
       Future.delayed(const Duration(milliseconds: 100), () async {
         try {
@@ -984,15 +1125,20 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
         }
       });
     } catch (e, stackTrace) {
-      await logger.error('DataManagementPage', '解密文件失败: ${file.fileName}', e, stackTrace);
+      await logger.error(
+        'DataManagementPage',
+        '解密文件失败: ${file.fileName}',
+        e,
+        stackTrace,
+      );
       _showMessage('解密失败: $e', false);
       // 清理节流时间戳
       _lastProgressUpdateMap.remove(file.originalPath);
-      
+
       // 等待文件系统稳定
       await logger.info('DataManagementPage', '等待文件系统稳定...');
       await Future.delayed(const Duration(milliseconds: 2500));
-      
+
       // 即使失败也要尝试重新连接数据库
       if (mounted) {
         try {
@@ -1035,7 +1181,8 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    if (bytes < 1024 * 1024 * 1024)
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
@@ -1044,13 +1191,13 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
   /// 加载图片文件列表
   Future<void> _loadImageFiles() async {
     if (!mounted) return;
-    
+
     // 防止重复扫描
     if (_isLoadingImages) {
       await logger.warning('DataManagementPage', '图片扫描已在进行中，跳过本次请求');
       return;
     }
-    
+
     setState(() {
       _isLoadingImages = true;
       _imageFiles.clear(); // 清空列表在setState中，确保UI立即更新
@@ -1061,27 +1208,30 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
 
     try {
       await logger.info('DataManagementPage', '开始扫描图片文件...');
-      
+
       final documentsDir = await getApplicationDocumentsDirectory();
       final documentsPath = documentsDir.path;
-      
+
       // 获取配置的路径
       String? configuredPath = await _configService.getDatabasePath();
 
       if (configuredPath == null || configuredPath.isEmpty) {
         configuredPath = '$documentsPath${Platform.pathSeparator}xwechat_files';
       }
-      
+
       await logger.info('DataManagementPage', '配置路径: $configuredPath');
-      
+
       // 扫描图片文件
       await _scanImagePath(configuredPath, documentsPath);
 
       // 按文件大小排序
       _imageFiles.sort((a, b) => a.fileSize.compareTo(b.fileSize));
-      
-      await logger.info('DataManagementPage', '图片扫描完成，共找到 ${_imageFiles.length} 个文件');
-      
+
+      await logger.info(
+        'DataManagementPage',
+        '图片扫描完成，共找到 ${_imageFiles.length} 个文件',
+      );
+
       if (_imageFiles.isNotEmpty) {
         _showImageMessage('找到 ${_imageFiles.length} 个图片文件', true);
       }
@@ -1108,18 +1258,26 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
     final pathParts = basePath.split(Platform.pathSeparator);
     final lastPart = pathParts.isNotEmpty ? pathParts.last : '';
 
-    await logger.info('DataManagementPage', '开始扫描图片文件，路径: $basePath, 最后部分: $lastPart');
+    await logger.info(
+      'DataManagementPage',
+      '开始扫描图片文件，路径: $basePath, 最后部分: $lastPart',
+    );
 
     // 判断路径类型并采取不同的扫描策略
     if (lastPart == 'db_storage') {
       // 情况1：用户选择了 db_storage 目录
       // 需要回到父目录（账号目录）来扫描图片
       if (pathParts.length >= 2) {
-        final accountPath = pathParts.sublist(0, pathParts.length - 1).join(Platform.pathSeparator);
+        final accountPath = pathParts
+            .sublist(0, pathParts.length - 1)
+            .join(Platform.pathSeparator);
         final accountDir = Directory(accountPath);
-        
-        await logger.info('DataManagementPage', '检测到db_storage路径，扫描账号目录: $accountPath');
-        
+
+        await logger.info(
+          'DataManagementPage',
+          '检测到db_storage路径，扫描账号目录: $accountPath',
+        );
+
         if (await accountDir.exists()) {
           await _scanWxidImageDirectory(accountDir, documentsPath);
         }
@@ -1128,15 +1286,16 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
       // 情况2和3：扫描该目录下所有包含图片的账号目录
       // 通过检查是否有 db_storage 子文件夹来识别账号目录
       await logger.info('DataManagementPage', '扫描目录下的所有账号子目录');
-      
+
       final entities = await baseDir.list().toList();
       final accountDirs = <Directory>[];
-      
+
       for (final entity in entities) {
         if (entity is! Directory) continue;
-        
+
         // 检查是否有 db_storage 子文件夹（标志账号目录）
-        final dbStoragePath = '${entity.path}${Platform.pathSeparator}db_storage';
+        final dbStoragePath =
+            '${entity.path}${Platform.pathSeparator}db_storage';
         if (await Directory(dbStoragePath).exists()) {
           accountDirs.add(entity);
         }
@@ -1154,9 +1313,15 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
   Future<String> _getImageQualityStats() async {
     if (_imageFiles.isEmpty) return '';
 
-    final originalCount = _imageFiles.where((f) => f.imageQuality == 'original').length;
-    final thumbnailCount = _imageFiles.where((f) => f.imageQuality == 'thumbnail').length;
-    final unknownCount = _imageFiles.where((f) => f.imageQuality == 'unknown').length;
+    final originalCount = _imageFiles
+        .where((f) => f.imageQuality == 'original')
+        .length;
+    final thumbnailCount = _imageFiles
+        .where((f) => f.imageQuality == 'thumbnail')
+        .length;
+    final unknownCount = _imageFiles
+        .where((f) => f.imageQuality == 'unknown')
+        .length;
 
     return '原图: $originalCount • 缩略图: $thumbnailCount${unknownCount > 0 ? ' • 未知: $unknownCount' : ''}';
   }
@@ -1164,12 +1329,17 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
   /// 检测图片质量类型（原图/缩略图）
   String _detectImageQuality(String relativePath, int fileSize) {
     final pathLower = relativePath.toLowerCase();
-    final fileNameLower = relativePath.split(Platform.pathSeparator).last.toLowerCase();
+    final fileNameLower = relativePath
+        .split(Platform.pathSeparator)
+        .last
+        .toLowerCase();
 
     // 文件大小判断（这是主要依据）
-    if (fileSize < 50 * 1024) { // 小于50KB，很可能是缩略图
+    if (fileSize < 50 * 1024) {
+      // 小于50KB，很可能是缩略图
       return 'thumbnail';
-    } else if (fileSize > 500 * 1024) { // 大于500KB，很可能是原图
+    } else if (fileSize > 500 * 1024) {
+      // 大于500KB，很可能是原图
       return 'original';
     }
 
@@ -1194,7 +1364,8 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
     // 路径深度判断
     // 通常原图在Image目录下，缩略图可能在子目录中
     final pathParts = relativePath.split(Platform.pathSeparator);
-    if (pathParts.length > 3) { // 路径较深，可能是缩略图
+    if (pathParts.length > 3) {
+      // 路径较深，可能是缩略图
       return 'thumbnail';
     }
 
@@ -1203,30 +1374,34 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
   }
 
   /// 扫描单个wxid目录下的图片
-  Future<void> _scanWxidImageDirectory(Directory wxidDir, String documentsPath) async {
+  Future<void> _scanWxidImageDirectory(
+    Directory wxidDir,
+    String documentsPath,
+  ) async {
     int foundCount = 0;
     int updateThreshold = 0; // 每100个文件更新一次UI
-    
+
     try {
       await logger.info('DataManagementPage', '开始扫描wxid目录: ${wxidDir.path}');
-      
+
       // 查找所有 .dat 文件（递归搜索）
       await for (final entity in wxidDir.list(recursive: true)) {
         if (entity is File) {
           final filePath = entity.path.toLowerCase();
-          
+
           // 只处理 .dat 文件
           if (!filePath.endsWith('.dat')) {
             continue;
           }
-          
+
           // 跳过数据库文件
-          if (filePath.contains('db_storage') || filePath.contains('database')) {
+          if (filePath.contains('db_storage') ||
+              filePath.contains('database')) {
             continue;
           }
 
           final fileName = entity.path.split(Platform.pathSeparator).last;
-          
+
           try {
             final fileSize = await entity.length();
 
@@ -1242,23 +1417,30 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
             final imageQuality = _detectImageQuality(relativePath, fileSize);
 
             // 计算解密后的路径（不检查是否存在，加快扫描速度）
-            final outputDir = Directory('$documentsPath${Platform.pathSeparator}EchoTrace${Platform.pathSeparator}Images');
-            final decryptedPath = '${outputDir.path}$relativePath'.replaceAll('.dat', '.jpg');
+            final outputDir = Directory(
+              '$documentsPath${Platform.pathSeparator}EchoTrace${Platform.pathSeparator}Images',
+            );
+            final decryptedPath = '${outputDir.path}$relativePath'.replaceAll(
+              '.dat',
+              '.jpg',
+            );
 
             // 快速扫描：不检测版本和解密状态（解密时再检测）
-            _imageFiles.add(ImageFile(
-              originalPath: entity.path,
-              fileName: fileName,
-              fileSize: fileSize,
-              relativePath: relativePath,
-              isDecrypted: false, // 默认未解密，批量解密时会自动跳过已存在的
-              decryptedPath: decryptedPath,
-              version: 0, // 默认V3，解密时自动检测
-              imageQuality: imageQuality,
-            ));
-            
+            _imageFiles.add(
+              ImageFile(
+                originalPath: entity.path,
+                fileName: fileName,
+                fileSize: fileSize,
+                relativePath: relativePath,
+                isDecrypted: false, // 默认未解密，批量解密时会自动跳过已存在的
+                decryptedPath: decryptedPath,
+                version: 0, // 默认V3，解密时自动检测
+                imageQuality: imageQuality,
+              ),
+            );
+
             foundCount++;
-            
+
             // 每100个文件更新一次UI，减少setState频率
             if (foundCount > updateThreshold) {
               updateThreshold = foundCount + 100;
@@ -1271,10 +1453,18 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
           }
         }
       }
-      
-      await logger.info('DataManagementPage', 'wxid目录扫描完成，找到 $foundCount 个图片文件');
+
+      await logger.info(
+        'DataManagementPage',
+        'wxid目录扫描完成，找到 $foundCount 个图片文件',
+      );
     } catch (e, stackTrace) {
-      await logger.error('DataManagementPage', '扫描目录失败: ${wxidDir.path}', e, stackTrace);
+      await logger.error(
+        'DataManagementPage',
+        '扫描目录失败: ${wxidDir.path}',
+        e,
+        stackTrace,
+      );
     }
   }
 
@@ -1285,7 +1475,9 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
 
     // 应用质量过滤
     if (_imageQualityFilter != 'all') {
-      filteredFiles = filteredFiles.where((f) => f.imageQuality == _imageQualityFilter).toList();
+      filteredFiles = filteredFiles
+          .where((f) => f.imageQuality == _imageQualityFilter)
+          .toList();
     }
 
     // 应用解密状态过滤
@@ -1371,11 +1563,18 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
           _imageDecryptResults[imageFile.fileName] = true;
           successCount++;
 
-          await logger.info('DataManagementPage', '图片解密成功: ${imageFile.fileName}');
+          await logger.info(
+            'DataManagementPage',
+            '图片解密成功: ${imageFile.fileName}',
+          );
         } catch (e) {
           _imageDecryptResults[imageFile.fileName] = false;
           failCount++;
-          await logger.error('DataManagementPage', '图片解密失败: ${imageFile.fileName}', e);
+          await logger.error(
+            'DataManagementPage',
+            '图片解密失败: ${imageFile.fileName}',
+            e,
+          );
         }
 
         setState(() {
@@ -1414,7 +1613,7 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
     try {
       final xorKey = ImageDecryptService.hexToXorKey(xorKeyHex);
       Uint8List? aesKey;
-      
+
       if (aesKeyHex != null && aesKeyHex.isNotEmpty && aesKeyHex.length >= 16) {
         aesKey = ImageDecryptService.hexToBytes16(aesKeyHex);
       }
@@ -1441,7 +1640,12 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
       _showImageMessage('解密成功: ${imageFile.fileName}', true);
       await logger.info('DataManagementPage', '图片解密成功: ${imageFile.fileName}');
     } catch (e, stackTrace) {
-      await logger.error('DataManagementPage', '解密失败: ${imageFile.fileName}', e, stackTrace);
+      await logger.error(
+        'DataManagementPage',
+        '解密失败: ${imageFile.fileName}',
+        e,
+        stackTrace,
+      );
       _showImageMessage('解密失败: $e', false);
     }
   }
@@ -1474,21 +1678,14 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border(
-                bottom: BorderSide(
-                  color: Colors.grey.shade200,
-                  width: 1,
-                ),
+                bottom: BorderSide(color: Colors.grey.shade200, width: 1),
               ),
             ),
             child: TabBar(
               controller: _tabController,
               tabs: const [
-                Tab(
-                  text: '数据库文件',
-                ),
-                Tab(
-                  text: '图片文件',
-                ),
+                Tab(text: '数据库文件'),
+                Tab(text: '图片文件'),
               ],
               labelColor: Theme.of(context).colorScheme.primary,
               unselectedLabelColor: Colors.grey,
@@ -1496,7 +1693,7 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
               indicatorWeight: 3,
             ),
           ),
-          
+
           // Tab内容区域
           Expanded(
             child: TabBarView(
@@ -1524,10 +1721,7 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
           decoration: BoxDecoration(
             color: Colors.white,
             border: Border(
-              bottom: BorderSide(
-                color: Colors.grey.shade200,
-                width: 1,
-              ),
+              bottom: BorderSide(color: Colors.grey.shade200, width: 1),
             ),
           ),
           child: Row(
@@ -1538,9 +1732,13 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                 Padding(
                   padding: const EdgeInsets.only(right: 12),
                   child: OutlinedButton.icon(
-                    onPressed: (_isLoading || _isDecrypting) ? null : _updateChanged,
+                    onPressed: (_isLoading || _isDecrypting)
+                        ? null
+                        : _updateChanged,
                     icon: const Icon(Icons.update),
-                    label: Text('增量更新 (${_databaseFiles.where((f) => f.needsUpdate).length})'),
+                    label: Text(
+                      '增量更新 (${_databaseFiles.where((f) => f.needsUpdate).length})',
+                    ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.orange,
                       side: BorderSide(color: Colors.orange.shade400),
@@ -1549,17 +1747,21 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                 ),
               // 批量解密按钮
               ElevatedButton.icon(
-                onPressed: (_isLoading || _isDecrypting) ? null : _decryptAllPending,
+                onPressed: (_isLoading || _isDecrypting)
+                    ? null
+                    : _decryptAllPending,
                 icon: _isDecrypting
-                  ? SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2, 
-                        value: _totalFiles > 0 ? _completedFiles / _totalFiles : null
-                      ),
-                    )
-                  : const Icon(Icons.play_arrow),
+                    ? SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          value: _totalFiles > 0
+                              ? _completedFiles / _totalFiles
+                              : null,
+                        ),
+                      )
+                    : const Icon(Icons.play_arrow),
                 label: Text(_isDecrypting ? '正在解密...' : '批量解密'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.primary,
@@ -1573,8 +1775,8 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
         // 列表区域
         Expanded(
           child: _isLoading && _databaseFiles.isEmpty
-            ? const Center(child: CircularProgressIndicator())
-            : _databaseFiles.isEmpty
+              ? const Center(child: CircularProgressIndicator())
+              : _databaseFiles.isEmpty
               ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -1582,159 +1784,173 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                       Icon(
                         Icons.folder_open,
                         size: 64,
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withOpacity(0.3),
                       ),
                       const SizedBox(height: 16),
                       Text(
                         '未找到数据库文件',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.6),
                         ),
                       ),
                       const SizedBox(height: 8),
                       Text(
                         '请确保微信数据目录存在',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.4),
                         ),
                       ),
                     ],
                   ),
                 )
               : Column(
-                    children: [
-                      // 解密进度显示
-                      if (_isDecrypting)
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(16),
-                          margin: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.blue, width: 1),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      '正在解密: $_currentDecryptingFile',
-                                      style: TextStyle(
-                                        color: Colors.blue.shade700,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              // 文件级进度
-                              LinearProgressIndicator(
-                                value: _totalFiles > 0 ? _completedFiles / _totalFiles : 0,
-                                backgroundColor: Colors.blue.shade100,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.shade600),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                '文件进度: $_completedFiles / $_totalFiles',
-                                style: TextStyle(
-                                  color: Colors.blue.shade600,
-                                  fontSize: 12,
-                                ),
-                              ),
-                              // 页面级进度（如果有）
-                              if (_totalFilePages > 0) ...[
-                                const SizedBox(height: 8),
-                                LinearProgressIndicator(
-                                  value: _currentFilePages / _totalFilePages,
-                                  backgroundColor: Colors.blue.shade50,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.shade400),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '页面进度: $_currentFilePages / $_totalFilePages',
-                                  style: TextStyle(
-                                    color: Colors.blue.shade500,
-                                    fontSize: 11,
+                  children: [
+                    // 解密进度显示
+                    if (_isDecrypting)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        margin: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.blue, width: 1),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
                                   ),
                                 ),
-                              ],
-                              // Isolate状态提示
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Text(
-                                    '解密中，中途卡住是正常现象，请不要离开此页面',
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    '正在解密: $_currentDecryptingFile',
                                     style: TextStyle(
-                                      color: Colors.green.shade600,
-                                      fontSize: 12,
+                                      color: Colors.blue.shade700,
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-
-                      // 状态消息
-                      if (_statusMessage != null)
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(16),
-                          margin: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: _isSuccess
-                                ? Colors.green.withOpacity(0.1)
-                                : Colors.red.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: _isSuccess ? Colors.green : Colors.red,
-                              width: 1,
+                                ),
+                              ],
                             ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                _isSuccess ? Icons.check_circle : Icons.error,
-                                color: _isSuccess ? Colors.green : Colors.red,
+                            const SizedBox(height: 12),
+                            // 文件级进度
+                            LinearProgressIndicator(
+                              value: _totalFiles > 0
+                                  ? _completedFiles / _totalFiles
+                                  : 0,
+                              backgroundColor: Colors.blue.shade100,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.blue.shade600,
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  _statusMessage!,
-                                  style: TextStyle(
-                                    color: _isSuccess ? Colors.green : Colors.red,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '文件进度: $_completedFiles / $_totalFiles',
+                              style: TextStyle(
+                                color: Colors.blue.shade600,
+                                fontSize: 12,
+                              ),
+                            ),
+                            // 页面级进度（如果有）
+                            if (_totalFilePages > 0) ...[
+                              const SizedBox(height: 8),
+                              LinearProgressIndicator(
+                                value: _currentFilePages / _totalFilePages,
+                                backgroundColor: Colors.blue.shade50,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.blue.shade400,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '页面进度: $_currentFilePages / $_totalFilePages',
+                                style: TextStyle(
+                                  color: Colors.blue.shade500,
+                                  fontSize: 11,
                                 ),
                               ),
                             ],
-                          ),
-                        ),
-                      
-                      // 文件列表
-                      Expanded(
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _databaseFiles.length,
-                          itemBuilder: (context, index) {
-                            final file = _databaseFiles[index];
-                            return _buildFileCard(file);
-                          },
+                            // Isolate状态提示
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Text(
+                                  '解密中，中途卡住是正常现象，请不要离开此页面',
+                                  style: TextStyle(
+                                    color: Colors.green.shade600,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
+
+                    // 状态消息
+                    if (_statusMessage != null)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        margin: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: _isSuccess
+                              ? Colors.green.withOpacity(0.1)
+                              : Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _isSuccess ? Colors.green : Colors.red,
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _isSuccess ? Icons.check_circle : Icons.error,
+                              color: _isSuccess ? Colors.green : Colors.red,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                _statusMessage!,
+                                style: TextStyle(
+                                  color: _isSuccess ? Colors.green : Colors.red,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    // 文件列表
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _databaseFiles.length,
+                        itemBuilder: (context, index) {
+                          final file = _databaseFiles[index];
+                          return _buildFileCard(file);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
         ),
       ],
     );
@@ -1758,21 +1974,21 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: file.isDecrypted 
-                  ? Colors.green.withOpacity(0.1)
-                  : Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                color: file.isDecrypted
+                    ? Colors.green.withOpacity(0.1)
+                    : Theme.of(context).colorScheme.primary.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
                 file.isDecrypted ? Icons.check_circle : Icons.storage,
-                color: file.isDecrypted 
-                  ? Colors.green
-                  : Theme.of(context).colorScheme.primary,
+                color: file.isDecrypted
+                    ? Colors.green
+                    : Theme.of(context).colorScheme.primary,
                 size: 24,
               ),
             ),
             const SizedBox(width: 16),
-            
+
             // 文件信息
             Expanded(
               child: Column(
@@ -1788,14 +2004,18 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                   Text(
                     '账号: ${file.wxidName}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(0.6),
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     '大小: ${_formatFileSize(file.fileSize)}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withOpacity(0.6),
                     ),
                   ),
                   if (file.decryptProgress > 0 && file.decryptProgress < 1)
@@ -1804,12 +2024,12 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                       child: LinearProgressIndicator(
                         value: file.decryptProgress,
                         backgroundColor: Colors.grey.shade200,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
-            
+
             // 状态和操作按钮
             Column(
               children: [
@@ -1817,17 +2037,22 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: file.isDecrypted 
-                          ? Colors.green.withOpacity(0.1)
-                          : Colors.orange.withOpacity(0.1),
+                        color: file.isDecrypted
+                            ? Colors.green.withOpacity(0.1)
+                            : Colors.orange.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         file.isDecrypted ? '已解密' : '未解密',
                         style: TextStyle(
-                          color: file.isDecrypted ? Colors.green : Colors.orange,
+                          color: file.isDecrypted
+                              ? Colors.green
+                              : Colors.orange,
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                         ),
@@ -1836,7 +2061,10 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                     if (file.needsUpdate) ...[
                       const SizedBox(width: 6),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.blue.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
@@ -1867,14 +2095,21 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                 const SizedBox(height: 8),
                 if (!file.isDecrypted)
                   OutlinedButton(
-                    onPressed: (_isLoading || (_isDecrypting && file.decryptProgress == 0)) ? null : () => _decryptSingle(file),
+                    onPressed:
+                        (_isLoading ||
+                            (_isDecrypting && file.decryptProgress == 0))
+                        ? null
+                        : () => _decryptSingle(file),
                     child: Text(
-                      _isDecrypting && file.decryptProgress > 0 
-                        ? '${(file.decryptProgress * 100).toStringAsFixed(0)}%' 
-                        : '解密'
+                      _isDecrypting && file.decryptProgress > 0
+                          ? '${(file.decryptProgress * 100).toStringAsFixed(0)}%'
+                          : '解密',
                     ),
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                     ),
                   ),
               ],
@@ -1916,7 +2151,9 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
@@ -1932,16 +2169,16 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                       children: [
                         Text(
                           '${_imageFiles.length}',
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
+                          style: Theme.of(context).textTheme.headlineSmall
+                              ?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
                         ),
                         Text(
                           '图片文件',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.grey.shade600,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: Colors.grey.shade600),
                         ),
                         const SizedBox(height: 4),
                         // 显示质量统计
@@ -1971,10 +2208,15 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
                         child: InkWell(
-                          onTap: (_isLoadingImages || _isDecryptingImages) ? null : _loadImageFiles,
+                          onTap: (_isLoadingImages || _isDecryptingImages)
+                              ? null
+                              : _loadImageFiles,
                           borderRadius: BorderRadius.circular(12),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
@@ -1991,7 +2233,9 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                                     height: 16,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      color: Theme.of(context).colorScheme.primary,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
                                     ),
                                   )
                                 else
@@ -2021,10 +2265,18 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                         borderRadius: BorderRadius.circular(12),
                         elevation: 0,
                         child: InkWell(
-                          onTap: (_isLoadingImages || _isDecryptingImages || _imageFiles.isEmpty) ? null : _decryptAllImages,
+                          onTap:
+                              (_isLoadingImages ||
+                                  _isDecryptingImages ||
+                                  _imageFiles.isEmpty)
+                              ? null
+                              : _decryptAllImages,
                           borderRadius: BorderRadius.circular(12),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -2035,7 +2287,10 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
                                       color: Colors.white,
-                                      value: _totalImageFiles > 0 ? _completedImageFiles / _totalImageFiles : null,
+                                      value: _totalImageFiles > 0
+                                          ? _completedImageFiles /
+                                                _totalImageFiles
+                                          : null,
                                     ),
                                   )
                                 else
@@ -2069,47 +2324,49 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
         // 列表区域
         Expanded(
           child: _isLoadingImages && _imageFiles.isEmpty
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SizedBox(
-                      width: 60,
-                      height: 60,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 4,
-                        color: Theme.of(context).colorScheme.primary,
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 60,
+                        height: 60,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 4,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      '正在扫描图片文件...',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                        fontWeight: FontWeight.w500,
+                      const SizedBox(height: 24),
+                      Text(
+                        '正在扫描图片文件...',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.w500,
+                            ),
                       ),
-                    ),
-                    if (_imageFiles.isNotEmpty) ...[
+                      if (_imageFiles.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '已找到 ${_imageFiles.length} 个文件',
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       Text(
-                        '已找到 ${_imageFiles.length} 个文件',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w500,
+                        '这可能需要一些时间，请稍候',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey.shade600,
                         ),
                       ),
                     ],
-                    const SizedBox(height: 8),
-                    Text(
-                      '这可能需要一些时间，请稍候',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            : _imageFiles.isEmpty
+                  ),
+                )
+              : _imageFiles.isEmpty
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(32),
@@ -2119,14 +2376,19 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                         Icon(
                           Icons.image_not_supported,
                           size: 64,
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.3),
                         ),
                         const SizedBox(height: 16),
                         Text(
                           '未找到图片文件',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                          ),
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withOpacity(0.6),
+                              ),
                         ),
                         const SizedBox(height: 16),
                         Container(
@@ -2134,7 +2396,9 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                           decoration: BoxDecoration(
                             color: Colors.blue.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                            border: Border.all(
+                              color: Colors.blue.withOpacity(0.3),
+                            ),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2149,10 +2413,13 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                                   const SizedBox(width: 8),
                                   Text(
                                     '可能的原因',
-                                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                      color: Colors.blue.shade700,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleSmall
+                                        ?.copyWith(
+                                          color: Colors.blue.shade700,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                   ),
                                 ],
                               ),
@@ -2162,10 +2429,11 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                                 '2. 配置的路径不正确（应选择wxid目录或db_storage的父目录）\n'
                                 '3. 图片文件不在常见位置（FileStorage/Image 或 Msg/attach）\n\n'
                                 '💡 建议：点击刷新按钮重新扫描，或在设置中重新选择微信数据目录',
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  color: Colors.blue.shade600,
-                                  height: 1.5,
-                                ),
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: Colors.blue.shade600,
+                                      height: 1.5,
+                                    ),
                               ),
                             ],
                           ),
@@ -2176,7 +2444,10 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                           icon: const Icon(Icons.refresh),
                           label: const Text('重新扫描'),
                           style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 12,
+                            ),
                           ),
                         ),
                       ],
@@ -2190,19 +2461,28 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(20),
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              Theme.of(context).colorScheme.primary.withOpacity(0.08),
-                              Theme.of(context).colorScheme.primary.withOpacity(0.04),
+                              Theme.of(
+                                context,
+                              ).colorScheme.primary.withOpacity(0.08),
+                              Theme.of(
+                                context,
+                              ).colorScheme.primary.withOpacity(0.04),
                             ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.primary.withOpacity(0.2),
                             width: 1,
                           ),
                         ),
@@ -2213,7 +2493,9 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                                 Container(
                                   padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary.withOpacity(0.15),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: SizedBox(
@@ -2221,19 +2503,24 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                                     height: 20,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2.5,
-                                      color: Theme.of(context).colorScheme.primary,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
                                     ),
                                   ),
                                 ),
                                 const SizedBox(width: 16),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         '正在解密图片',
                                         style: TextStyle(
-                                          color: Theme.of(context).colorScheme.primary,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.primary,
                                           fontWeight: FontWeight.w600,
                                           fontSize: 15,
                                         ),
@@ -2254,7 +2541,9 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                                 Text(
                                   '${((_completedImageFiles / _totalImageFiles) * 100).toStringAsFixed(0)}%',
                                   style: TextStyle(
-                                    color: Theme.of(context).colorScheme.primary,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
                                   ),
@@ -2265,10 +2554,16 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                             ClipRRect(
                               borderRadius: BorderRadius.circular(8),
                               child: LinearProgressIndicator(
-                                value: _totalImageFiles > 0 ? _completedImageFiles / _totalImageFiles : 0,
+                                value: _totalImageFiles > 0
+                                    ? _completedImageFiles / _totalImageFiles
+                                    : 0,
                                 minHeight: 6,
-                                backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.15),
-                                valueColor: AlwaysStoppedAnimation<Color>(Theme.of(context).colorScheme.primary),
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.primary.withOpacity(0.15),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Theme.of(context).colorScheme.primary,
+                                ),
                               ),
                             ),
                             const SizedBox(height: 8),
@@ -2314,15 +2609,21 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                         child: Row(
                           children: [
                             Icon(
-                              _isImageSuccess ? Icons.check_circle : Icons.error,
-                              color: _isImageSuccess ? Colors.green : Colors.red,
+                              _isImageSuccess
+                                  ? Icons.check_circle
+                                  : Icons.error,
+                              color: _isImageSuccess
+                                  ? Colors.green
+                                  : Colors.red,
                             ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
                                 _imageStatusMessage!,
                                 style: TextStyle(
-                                  color: _isImageSuccess ? Colors.green : Colors.red,
+                                  color: _isImageSuccess
+                                      ? Colors.green
+                                      : Colors.red,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -2332,9 +2633,7 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                       ),
 
                     // 图片列表
-                    Expanded(
-                      child: _buildImageList(),
-                    ),
+                    Expanded(child: _buildImageList()),
                   ],
                 ),
         ),
@@ -2349,7 +2648,9 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
 
     // 应用质量过滤
     if (_imageQualityFilter != 'all') {
-      filteredFiles = filteredFiles.where((f) => f.imageQuality == _imageQualityFilter).toList();
+      filteredFiles = filteredFiles
+          .where((f) => f.imageQuality == _imageQualityFilter)
+          .toList();
     }
 
     // 应用解密状态过滤
@@ -2360,7 +2661,7 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
     // 应用显示限制
     final displayFiles = filteredFiles.take(_displayLimit).toList();
     final hasMore = filteredFiles.length > _displayLimit;
-    
+
     return Column(
       children: [
         // 过滤和统计信息栏
@@ -2406,9 +2707,14 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                   ),
                   // 统计标签
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.primary.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -2441,7 +2747,9 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                     return Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: Material(
-                        color: isSelected ? Theme.of(context).colorScheme.primary : Colors.white,
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.white,
                         borderRadius: BorderRadius.circular(8),
                         child: InkWell(
                           onTap: () {
@@ -2451,21 +2759,31 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                           },
                           borderRadius: BorderRadius.circular(8),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey.shade300,
+                                color: isSelected
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Colors.grey.shade300,
                                 width: 1,
                               ),
                             ),
                             child: Text(
-                              quality == 'all' ? '全部' :
-                              quality == 'original' ? '原图' : '缩略图',
+                              quality == 'all'
+                                  ? '全部'
+                                  : quality == 'original'
+                                  ? '原图'
+                                  : '缩略图',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w500,
-                                color: isSelected ? Colors.white : Colors.grey.shade700,
+                                color: isSelected
+                                    ? Colors.white
+                                    : Colors.grey.shade700,
                               ),
                             ),
                           ),
@@ -2478,7 +2796,7 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
             ],
           ),
         ),
-        
+
         // 加载更多提示
         if (hasMore)
           Container(
@@ -2523,7 +2841,10 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                     },
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                       child: Text(
                         '加载更多',
                         style: TextStyle(
@@ -2538,59 +2859,64 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
               ],
             ),
           ),
-        
+
         // 文件列表
         Expanded(
           child: displayFiles.isEmpty
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        shape: BoxShape.circle,
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          _showOnlyUndecrypted
+                              ? Icons.done_all_rounded
+                              : Icons.image_search_rounded,
+                          size: 48,
+                          color: Colors.grey.shade400,
+                        ),
                       ),
-                      child: Icon(
-                        _showOnlyUndecrypted ? Icons.done_all_rounded : Icons.image_search_rounded,
-                        size: 48,
-                        color: Colors.grey.shade400,
+                      const SizedBox(height: 20),
+                      Text(
+                        _showOnlyUndecrypted ? '所有文件都已解密' : '没有图片文件',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade700,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    Text(
-                      _showOnlyUndecrypted ? '所有文件都已解密' : '没有图片文件',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey.shade700,
+                      const SizedBox(height: 8),
+                      Text(
+                        _showOnlyUndecrypted
+                            ? '可以关闭过滤查看全部文件'
+                            : _imageQualityFilter == 'original'
+                            ? '未找到原图文件，尝试选择"全部"查看所有图片'
+                            : '点击刷新按钮重新扫描，或检查微信数据目录是否正确',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade500,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _showOnlyUndecrypted
-                        ? '可以关闭过滤查看全部文件'
-                        : _imageQualityFilter == 'original'
-                          ? '未找到原图文件，尝试选择"全部"查看所有图片'
-                          : '点击刷新按钮重新扫描，或检查微信数据目录是否正确',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade500,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: displayFiles.length,
+                  itemBuilder: (context, index) {
+                    final imageFile = displayFiles[index];
+                    return _buildImageCard(imageFile);
+                  },
                 ),
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                physics: const BouncingScrollPhysics(),
-                itemCount: displayFiles.length,
-                itemBuilder: (context, index) {
-                  final imageFile = displayFiles[index];
-                  return _buildImageCard(imageFile);
-                },
-              ),
         ),
       ],
     );
@@ -2604,9 +2930,9 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: imageFile.isDecrypted 
-            ? Colors.green.withOpacity(0.2)
-            : Colors.grey.shade200,
+          color: imageFile.isDecrypted
+              ? Colors.green.withOpacity(0.2)
+              : Colors.grey.shade200,
           width: 1,
         ),
         boxShadow: [
@@ -2620,7 +2946,11 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: imageFile.isDecrypted ? null : (_isDecryptingImages ? null : () => _decryptSingleImage(imageFile)),
+          onTap: imageFile.isDecrypted
+              ? null
+              : (_isDecryptingImages
+                    ? null
+                    : () => _decryptSingleImage(imageFile)),
           borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: const EdgeInsets.all(14),
@@ -2630,14 +2960,18 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: imageFile.isDecrypted 
-                      ? Colors.green.withOpacity(0.1)
-                      : Colors.grey.withOpacity(0.08),
+                    color: imageFile.isDecrypted
+                        ? Colors.green.withOpacity(0.1)
+                        : Colors.grey.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
-                    imageFile.isDecrypted ? Icons.check_circle_rounded : Icons.image_outlined,
-                    color: imageFile.isDecrypted ? Colors.green.shade600 : Colors.grey.shade500,
+                    imageFile.isDecrypted
+                        ? Icons.check_circle_rounded
+                        : Icons.image_outlined,
+                    color: imageFile.isDecrypted
+                        ? Colors.green.shade600
+                        : Colors.grey.shade500,
                     size: 20,
                   ),
                 ),
@@ -2652,21 +2986,26 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                         children: [
                           // 质量标签
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: imageFile.imageQuality == 'original'
-                                ? Colors.blue.withOpacity(0.1)
-                                : Colors.orange.withOpacity(0.1),
+                                  ? Colors.blue.withOpacity(0.1)
+                                  : Colors.orange.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
-                              imageFile.imageQuality == 'original' ? '原图' : '缩略图',
+                              imageFile.imageQuality == 'original'
+                                  ? '原图'
+                                  : '缩略图',
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
                                 color: imageFile.imageQuality == 'original'
-                                  ? Colors.blue.shade700
-                                  : Colors.orange.shade700,
+                                    ? Colors.blue.shade700
+                                    : Colors.orange.shade700,
                               ),
                             ),
                           ),
@@ -2701,7 +3040,10 @@ class _DataManagementPageState extends State<DataManagementPage> with SingleTick
                 // 状态或操作按钮
                 if (imageFile.isDecrypted)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.green.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
@@ -2741,11 +3083,11 @@ class DatabaseFile {
 
   // 并行解密进度
   double decryptProgress;
-  
+
   // 增量更新相关
-  final DateTime? originalModified;  // 源文件修改时间
+  final DateTime? originalModified; // 源文件修改时间
   final DateTime? decryptedModified; // 备份文件修改时间
-  
+
   /// 是否需要更新（源文件比备份文件新）
   bool get needsUpdate {
     if (!isDecrypted) return false;

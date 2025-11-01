@@ -11,11 +11,15 @@ import 'database_service.dart';
 /// 聊天记录导出服务
 class ChatExportService {
   final DatabaseService _databaseService;
-  
+
   ChatExportService(this._databaseService);
-  
+
   /// 导出聊天记录为 JSON 格式
-  Future<bool> exportToJson(ChatSession session, List<Message> messages, {String? filePath}) async {
+  Future<bool> exportToJson(
+    ChatSession session,
+    List<Message> messages, {
+    String? filePath,
+  }) async {
     try {
       // 获取联系人详细信息
       final contactInfo = await _getContactInfo(session.username);
@@ -23,31 +27,39 @@ class ChatExportService {
       final data = {
         'session': {
           'wxid': session.username,
-          'nickname': contactInfo['nickname'] ?? session.displayName ?? session.username,
+          'nickname':
+              contactInfo['nickname'] ??
+              session.displayName ??
+              session.username,
           'remark': contactInfo['remark'] ?? '',
           'displayName': session.displayName ?? session.username,
           'type': session.typeDescription,
           'lastTimestamp': session.lastTimestamp,
           'messageCount': messages.length,
         },
-        'messages': messages.map((msg) => {
-          'localId': msg.localId,
-          'createTime': msg.createTime,
-          'formattedTime': msg.formattedCreateTime,
-          'type': msg.typeDescription,
-          'localType': msg.localType,
-          'content': msg.displayContent,
-          'isSend': msg.isSend,
-          'senderUsername': msg.senderUsername,
-          'source': msg.source,
-        }).toList(),
+        'messages': messages
+            .map(
+              (msg) => {
+                'localId': msg.localId,
+                'createTime': msg.createTime,
+                'formattedTime': msg.formattedCreateTime,
+                'type': msg.typeDescription,
+                'localType': msg.localType,
+                'content': msg.displayContent,
+                'isSend': msg.isSend,
+                'senderUsername': msg.senderUsername,
+                'source': msg.source,
+              },
+            )
+            .toList(),
         'exportTime': DateTime.now().toIso8601String(),
       };
 
       final jsonString = const JsonEncoder.withIndent('  ').convert(data);
 
       if (filePath == null) {
-        final suggestedName = '${session.displayName ?? session.username}_聊天记录_${DateTime.now().millisecondsSinceEpoch}.json';
+        final suggestedName =
+            '${session.displayName ?? session.username}_聊天记录_${DateTime.now().millisecondsSinceEpoch}.json';
         final outputFile = await FilePicker.platform.saveFile(
           dialogTitle: '保存聊天记录',
           fileName: suggestedName,
@@ -68,16 +80,22 @@ class ChatExportService {
       return false;
     }
   }
-  
+
   /// 导出聊天记录为 HTML 格式
-  Future<bool> exportToHtml(ChatSession session, List<Message> messages, {String? filePath}) async {
+  Future<bool> exportToHtml(
+    ChatSession session,
+    List<Message> messages, {
+    String? filePath,
+  }) async {
     try {
       // 获取联系人详细信息
       final contactInfo = await _getContactInfo(session.username);
 
       // 获取所有发送者的显示名称
       final senderUsernames = messages
-          .where((m) => m.senderUsername != null && m.senderUsername!.isNotEmpty)
+          .where(
+            (m) => m.senderUsername != null && m.senderUsername!.isNotEmpty,
+          )
           .map((m) => m.senderUsername!)
           .toSet()
           .toList();
@@ -88,10 +106,17 @@ class ChatExportService {
 
       final myWxid = _databaseService.currentAccountWxid ?? '';
 
-      final html = _generateHtml(session, messages, senderDisplayNames, myWxid, contactInfo);
+      final html = _generateHtml(
+        session,
+        messages,
+        senderDisplayNames,
+        myWxid,
+        contactInfo,
+      );
 
       if (filePath == null) {
-        final suggestedName = '${session.displayName ?? session.username}_聊天记录_${DateTime.now().millisecondsSinceEpoch}.html';
+        final suggestedName =
+            '${session.displayName ?? session.username}_聊天记录_${DateTime.now().millisecondsSinceEpoch}.html';
         final outputFile = await FilePicker.platform.saveFile(
           dialogTitle: '保存聊天记录',
           fileName: suggestedName,
@@ -112,9 +137,13 @@ class ChatExportService {
       return false;
     }
   }
-  
+
   /// 导出聊天记录为 Excel 格式
-  Future<bool> exportToExcel(ChatSession session, List<Message> messages, {String? filePath}) async {
+  Future<bool> exportToExcel(
+    ChatSession session,
+    List<Message> messages, {
+    String? filePath,
+  }) async {
     final Workbook workbook = Workbook();
     try {
       // 获取联系人详细信息
@@ -137,7 +166,9 @@ class ChatExportService {
       sheet.getRangeByIndex(currentRow, 1).setText('微信ID');
       sheet.getRangeByIndex(currentRow, 2).setText(session.username);
       sheet.getRangeByIndex(currentRow, 3).setText('昵称');
-      sheet.getRangeByIndex(currentRow, 4).setText(contactInfo['nickname'] ?? '');
+      sheet
+          .getRangeByIndex(currentRow, 4)
+          .setText(contactInfo['nickname'] ?? '');
       sheet.getRangeByIndex(currentRow, 5).setText('备注');
       sheet.getRangeByIndex(currentRow, 6).setText(contactInfo['remark'] ?? '');
       currentRow++;
@@ -158,7 +189,9 @@ class ChatExportService {
 
       // 获取所有发送者的显示名称
       final senderUsernames = messages
-          .where((m) => m.senderUsername != null && m.senderUsername!.isNotEmpty)
+          .where(
+            (m) => m.senderUsername != null && m.senderUsername!.isNotEmpty,
+          )
           .map((m) => m.senderUsername!)
           .toSet()
           .toList();
@@ -175,7 +208,7 @@ class ChatExportService {
 
       // 获取当前账户的联系人信息（用于"我"发送的消息）
       final currentAccountWxid = _databaseService.currentAccountWxid ?? '';
-      final currentAccountInfo = currentAccountWxid.isNotEmpty 
+      final currentAccountInfo = currentAccountWxid.isNotEmpty
           ? await _getContactInfo(currentAccountWxid)
           : <String, String>{};
 
@@ -219,17 +252,18 @@ class ChatExportService {
       }
 
       // 自动调整列宽（Syncfusion 使用 1-based 索引）
-      sheet.getRangeByIndex(1, 1).columnWidth = 8;   // 序号
-      sheet.getRangeByIndex(1, 2).columnWidth = 20;  // 时间
-      sheet.getRangeByIndex(1, 3).columnWidth = 15;  // 发送者
-      sheet.getRangeByIndex(1, 4).columnWidth = 25;  // 发送者微信ID
-      sheet.getRangeByIndex(1, 5).columnWidth = 15;  // 发送者昵称
-      sheet.getRangeByIndex(1, 6).columnWidth = 15;  // 发送者备注
-      sheet.getRangeByIndex(1, 7).columnWidth = 12;  // 消息类型
-      sheet.getRangeByIndex(1, 8).columnWidth = 50;  // 内容
+      sheet.getRangeByIndex(1, 1).columnWidth = 8; // 序号
+      sheet.getRangeByIndex(1, 2).columnWidth = 20; // 时间
+      sheet.getRangeByIndex(1, 3).columnWidth = 15; // 发送者
+      sheet.getRangeByIndex(1, 4).columnWidth = 25; // 发送者微信ID
+      sheet.getRangeByIndex(1, 5).columnWidth = 15; // 发送者昵称
+      sheet.getRangeByIndex(1, 6).columnWidth = 15; // 发送者备注
+      sheet.getRangeByIndex(1, 7).columnWidth = 12; // 消息类型
+      sheet.getRangeByIndex(1, 8).columnWidth = 50; // 内容
 
       if (filePath == null) {
-        final suggestedName = '${session.displayName ?? session.username}_聊天记录_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+        final suggestedName =
+            '${session.displayName ?? session.username}_聊天记录_${DateTime.now().millisecondsSinceEpoch}.xlsx';
         final outputFile = await FilePicker.platform.saveFile(
           dialogTitle: '保存聊天记录',
           fileName: suggestedName,
@@ -244,7 +278,7 @@ class ChatExportService {
       // 保存工作簿为字节流
       final List<int> bytes = workbook.saveAsStream();
       workbook.dispose();
-      
+
       final file = File(filePath);
       // 确保父目录存在
       final parentDir = file.parent;
@@ -258,14 +292,22 @@ class ChatExportService {
       return false;
     }
   }
-  
+
   /// 生成 HTML 内容
-  String _generateHtml(ChatSession session, List<Message> messages, Map<String, String> senderDisplayNames, String myWxid, Map<String, String> contactInfo) {
+  String _generateHtml(
+    ChatSession session,
+    List<Message> messages,
+    Map<String, String> senderDisplayNames,
+    String myWxid,
+    Map<String, String> contactInfo,
+  ) {
     final buffer = StringBuffer();
 
     // 构建消息数据
     final messagesData = messages.map((msg) {
-      final msgDate = DateTime.fromMillisecondsSinceEpoch(msg.createTime * 1000);
+      final msgDate = DateTime.fromMillisecondsSinceEpoch(
+        msg.createTime * 1000,
+      );
       final isSend = msg.isSend == 1;
 
       String senderName = '';
@@ -276,8 +318,10 @@ class ChatExportService {
       }
 
       return {
-        'date': '${msgDate.year}-${msgDate.month.toString().padLeft(2, '0')}-${msgDate.day.toString().padLeft(2, '0')}',
-        'time': '${msgDate.hour.toString().padLeft(2, '0')}:${msgDate.minute.toString().padLeft(2, '0')}:${msgDate.second.toString().padLeft(2, '0')}',
+        'date':
+            '${msgDate.year}-${msgDate.month.toString().padLeft(2, '0')}-${msgDate.day.toString().padLeft(2, '0')}',
+        'time':
+            '${msgDate.hour.toString().padLeft(2, '0')}:${msgDate.minute.toString().padLeft(2, '0')}:${msgDate.second.toString().padLeft(2, '0')}',
         'isSend': isSend,
         'content': msg.displayContent,
         'senderName': senderName,
@@ -289,8 +333,12 @@ class ChatExportService {
     buffer.writeln('<html lang="zh-CN">');
     buffer.writeln('<head>');
     buffer.writeln('  <meta charset="UTF-8">');
-    buffer.writeln('  <meta name="viewport" content="width=device-width, initial-scale=1.0">');
-    buffer.writeln('  <title>${_escapeHtml(session.displayName ?? session.username)} - 聊天记录</title>');
+    buffer.writeln(
+      '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
+    );
+    buffer.writeln(
+      '  <title>${_escapeHtml(session.displayName ?? session.username)} - 聊天记录</title>',
+    );
     buffer.writeln('  <style>');
     buffer.writeln(_getHtmlStyles());
     buffer.writeln('  </style>');
@@ -299,16 +347,23 @@ class ChatExportService {
     buffer.writeln('  <div class="container">');
     buffer.writeln('    <div class="header">');
     buffer.writeln('      <div class="header-main">');
-    buffer.writeln('        <h1>${_escapeHtml(session.displayName ?? session.username)}</h1>');
+    buffer.writeln(
+      '        <h1>${_escapeHtml(session.displayName ?? session.username)}</h1>',
+    );
 
     // 添加详细信息菜单按钮
     final nickname = contactInfo['nickname'] ?? '';
     final remark = contactInfo['remark'] ?? '';
-    final hasDetails = nickname.isNotEmpty || remark.isNotEmpty || session.username.isNotEmpty;
+    final hasDetails =
+        nickname.isNotEmpty || remark.isNotEmpty || session.username.isNotEmpty;
 
     if (hasDetails) {
-      buffer.writeln('        <button class="info-menu-btn" onclick="toggleInfoMenu()" title="查看详细信息">');
-      buffer.writeln('          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">');
+      buffer.writeln(
+        '        <button class="info-menu-btn" onclick="toggleInfoMenu()" title="查看详细信息">',
+      );
+      buffer.writeln(
+        '          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
+      );
       buffer.writeln('            <circle cx="12" cy="12" r="1"></circle>');
       buffer.writeln('            <circle cx="12" cy="5" r="1"></circle>');
       buffer.writeln('            <circle cx="12" cy="19" r="1"></circle>');
@@ -322,19 +377,25 @@ class ChatExportService {
       if (session.username.isNotEmpty) {
         buffer.writeln('          <div class="info-item">');
         buffer.writeln('            <span class="info-label">微信ID</span>');
-        buffer.writeln('            <span class="info-value">${_escapeHtml(session.username)}</span>');
+        buffer.writeln(
+          '            <span class="info-value">${_escapeHtml(session.username)}</span>',
+        );
         buffer.writeln('          </div>');
       }
       if (nickname.isNotEmpty) {
         buffer.writeln('          <div class="info-item">');
         buffer.writeln('            <span class="info-label">昵称</span>');
-        buffer.writeln('            <span class="info-value">${_escapeHtml(nickname)}</span>');
+        buffer.writeln(
+          '            <span class="info-value">${_escapeHtml(nickname)}</span>',
+        );
         buffer.writeln('          </div>');
       }
       if (remark.isNotEmpty) {
         buffer.writeln('          <div class="info-item">');
         buffer.writeln('            <span class="info-label">备注</span>');
-        buffer.writeln('            <span class="info-value">${_escapeHtml(remark)}</span>');
+        buffer.writeln(
+          '            <span class="info-value">${_escapeHtml(remark)}</span>',
+        );
         buffer.writeln('          </div>');
       }
       buffer.writeln('        </div>');
@@ -346,15 +407,19 @@ class ChatExportService {
     buffer.writeln('      <div class="info">');
     buffer.writeln('        <span>${session.typeDescription}</span>');
     buffer.writeln('        <span>共 ${messages.length} 条消息</span>');
-    buffer.writeln('        <span>导出时间: ${DateTime.now().toString().split('.')[0]}</span>');
+    buffer.writeln(
+      '        <span>导出时间: ${DateTime.now().toString().split('.')[0]}</span>',
+    );
     buffer.writeln('      </div>');
     buffer.writeln('    </div>');
     buffer.writeln('    <div class="messages" id="messages-container">');
     buffer.writeln('      <div class="loading">正在加载消息...</div>');
     buffer.writeln('    </div>');
-    buffer.writeln('    <div class="scroll-to-bottom" id="scroll-to-bottom" title="回到底部">↓</div>');
+    buffer.writeln(
+      '    <div class="scroll-to-bottom" id="scroll-to-bottom" title="回到底部">↓</div>',
+    );
     buffer.writeln('  </div>');
-    
+
     // 将消息数据嵌入为JSON
     buffer.writeln('  <script>');
     buffer.writeln('    const messagesData = ${jsonEncode(messagesData)};');
@@ -377,7 +442,9 @@ class ChatExportService {
     buffer.writeln('      ');
     buffer.writeln('      // 消息项');
     buffer.writeln('      const messageItem = document.createElement("div");');
-    buffer.writeln('      messageItem.className = msg.isSend ? "message-item sent" : "message-item received";');
+    buffer.writeln(
+      '      messageItem.className = msg.isSend ? "message-item sent" : "message-item received";',
+    );
     buffer.writeln('      ');
     buffer.writeln('      // 发送者名称');
     buffer.writeln('      if (msg.senderName) {');
@@ -408,19 +475,27 @@ class ChatExportService {
     buffer.writeln('    }');
     buffer.writeln('    ');
     buffer.writeln('    function loadInitialMessages() {');
-    buffer.writeln('      const container = document.getElementById("messages-container");');
-    buffer.writeln('      const loading = container.querySelector(".loading");');
+    buffer.writeln(
+      '      const container = document.getElementById("messages-container");',
+    );
+    buffer.writeln(
+      '      const loading = container.querySelector(".loading");',
+    );
     buffer.writeln('      if (loading) loading.remove();');
     buffer.writeln('      ');
     buffer.writeln('      // 加载最新的消息');
-    buffer.writeln('      const start = Math.max(0, messagesData.length - INITIAL_BATCH);');
+    buffer.writeln(
+      '      const start = Math.max(0, messagesData.length - INITIAL_BATCH);',
+    );
     buffer.writeln('      const fragment = document.createDocumentFragment();');
     buffer.writeln('      let lastDate = null;');
     buffer.writeln('      ');
     buffer.writeln('      for (let i = start; i < messagesData.length; i++) {');
     buffer.writeln('        const msg = messagesData[i];');
     buffer.writeln('        const showDate = msg.date !== lastDate;');
-    buffer.writeln('        fragment.appendChild(createMessageElement(msg, showDate));');
+    buffer.writeln(
+      '        fragment.appendChild(createMessageElement(msg, showDate));',
+    );
     buffer.writeln('        lastDate = msg.date;');
     buffer.writeln('      }');
     buffer.writeln('      ');
@@ -436,48 +511,70 @@ class ChatExportService {
     buffer.writeln('      if (isLoading || allLoaded) return;');
     buffer.writeln('      ');
     buffer.writeln('      isLoading = true;');
-    buffer.writeln('      const container = document.getElementById("messages-container");');
+    buffer.writeln(
+      '      const container = document.getElementById("messages-container");',
+    );
     buffer.writeln('      const oldHeight = container.scrollHeight;');
     buffer.writeln('      const oldScroll = container.scrollTop;');
     buffer.writeln('      ');
     buffer.writeln('      // 加载更早的消息');
-    buffer.writeln('      const start = Math.max(0, loadedStart - BATCH_SIZE);');
+    buffer.writeln(
+      '      const start = Math.max(0, loadedStart - BATCH_SIZE);',
+    );
     buffer.writeln('      const fragment = document.createDocumentFragment();');
     buffer.writeln('      let lastDate = null;');
     buffer.writeln('      ');
     buffer.writeln('      for (let i = start; i < loadedStart; i++) {');
     buffer.writeln('        const msg = messagesData[i];');
     buffer.writeln('        const showDate = msg.date !== lastDate;');
-    buffer.writeln('        fragment.appendChild(createMessageElement(msg, showDate));');
+    buffer.writeln(
+      '        fragment.appendChild(createMessageElement(msg, showDate));',
+    );
     buffer.writeln('        lastDate = msg.date;');
     buffer.writeln('      }');
     buffer.writeln('      ');
-    buffer.writeln('      container.insertBefore(fragment, container.firstChild);');
+    buffer.writeln(
+      '      container.insertBefore(fragment, container.firstChild);',
+    );
     buffer.writeln('      loadedStart = start;');
     buffer.writeln('      allLoaded = loadedStart === 0;');
     buffer.writeln('      ');
     buffer.writeln('      // 保持滚动位置');
-    buffer.writeln('      container.scrollTop = oldScroll + (container.scrollHeight - oldHeight);');
+    buffer.writeln(
+      '      container.scrollTop = oldScroll + (container.scrollHeight - oldHeight);',
+    );
     buffer.writeln('      isLoading = false;');
     buffer.writeln('    }');
     buffer.writeln('    ');
     buffer.writeln('    // 滚动监听');
-    buffer.writeln('    const scrollBtn = document.getElementById("scroll-to-bottom");');
-    buffer.writeln('    const messagesContainer = document.getElementById("messages-container");');
+    buffer.writeln(
+      '    const scrollBtn = document.getElementById("scroll-to-bottom");',
+    );
+    buffer.writeln(
+      '    const messagesContainer = document.getElementById("messages-container");',
+    );
     buffer.writeln('    ');
     buffer.writeln('    messagesContainer.addEventListener("scroll", () => {');
     buffer.writeln('      // 接近顶部时加载更多历史消息');
-    buffer.writeln('      if (messagesContainer.scrollTop < 200 && !allLoaded) {');
+    buffer.writeln(
+      '      if (messagesContainer.scrollTop < 200 && !allLoaded) {',
+    );
     buffer.writeln('        loadMoreMessages();');
     buffer.writeln('      }');
     buffer.writeln('      ');
     buffer.writeln('      // 显示/隐藏回到底部按钮');
-    buffer.writeln('      const isBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 100;');
-    buffer.writeln('      scrollBtn.style.display = isBottom ? "none" : "flex";');
+    buffer.writeln(
+      '      const isBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop <= messagesContainer.clientHeight + 100;',
+    );
+    buffer.writeln(
+      '      scrollBtn.style.display = isBottom ? "none" : "flex";',
+    );
     buffer.writeln('    });');
     buffer.writeln('    ');
     buffer.writeln('    scrollBtn.addEventListener("click", () => {');
-    buffer.writeln('      messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: "smooth" });');
+    buffer.writeln(
+      '      messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: "smooth" });',
+    );
     buffer.writeln('    });');
     buffer.writeln('    ');
     buffer.writeln('    // 详细信息菜单控制');
@@ -489,8 +586,12 @@ class ChatExportService {
     buffer.writeln('    // 点击外部关闭菜单');
     buffer.writeln('    document.addEventListener("click", (e) => {');
     buffer.writeln('      const menu = document.getElementById("info-menu");');
-    buffer.writeln('      const btn = document.querySelector(".info-menu-btn");');
-    buffer.writeln('      if (menu && btn && !menu.contains(e.target) && !btn.contains(e.target)) {');
+    buffer.writeln(
+      '      const btn = document.querySelector(".info-menu-btn");',
+    );
+    buffer.writeln(
+      '      if (menu && btn && !menu.contains(e.target) && !btn.contains(e.target)) {',
+    );
     buffer.writeln('        menu.classList.remove("show");');
     buffer.writeln('      }');
     buffer.writeln('    });');
@@ -502,10 +603,10 @@ class ChatExportService {
     buffer.writeln('  </script>');
     buffer.writeln('</body>');
     buffer.writeln('</html>');
-    
+
     return buffer.toString();
   }
-  
+
   /// 获取 HTML 样式
   String _getHtmlStyles() {
     return '''
@@ -1002,7 +1103,7 @@ class ChatExportService {
       }
     ''';
   }
-  
+
   /// HTML 转义
   String _escapeHtml(String text) {
     return text
@@ -1023,21 +1124,24 @@ class ChatExportService {
       if (sessionDbPath == null) {
         return result;
       }
-      
+
       // 推导 contact.db 路径
-      final contactDbPath = sessionDbPath.replaceAll('session.db', 'contact.db');
+      final contactDbPath = sessionDbPath.replaceAll(
+        'session.db',
+        'contact.db',
+      );
       final contactFile = File(contactDbPath);
-      
+
       if (!await contactFile.exists()) {
         return result;
       }
-      
+
       // 打开 contact.db 并查询
       final contactDb = await databaseFactory.openDatabase(
         contactDbPath,
         options: OpenDatabaseOptions(readOnly: true, singleInstance: false),
       );
-      
+
       try {
         final maps = await contactDb.query(
           'contact',
@@ -1046,12 +1150,12 @@ class ChatExportService {
           whereArgs: [username],
           limit: 1,
         );
-        
+
         if (maps.isNotEmpty) {
           final map = maps.first;
           final nickName = (map['nick_name'] as String?)?.trim() ?? '';
           final remark = (map['remark'] as String?)?.trim() ?? '';
-          
+
           if (nickName.isNotEmpty) {
             result['nickname'] = nickName;
           }
@@ -1069,4 +1173,3 @@ class ChatExportService {
     return result;
   }
 }
-

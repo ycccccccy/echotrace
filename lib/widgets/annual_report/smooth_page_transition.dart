@@ -33,10 +33,7 @@ class _SmoothPageWrapperState extends State<SmoothPageWrapper>
     );
 
     // 淡入淡出动画
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _controller,
         curve: const Interval(0.0, 0.8, curve: Curves.easeOut),
@@ -47,23 +44,13 @@ class _SmoothPageWrapperState extends State<SmoothPageWrapper>
     _scaleAnimation = Tween<double>(
       begin: 0.96,
       end: 1.0,
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeOutCubic,
-      ),
-    );
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
     // 滑动动画
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0.02, 0.0),
       end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeOutCubic,
-      ),
-    );
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
 
     // 延迟一小段时间后开始动画，确保页面已经构建
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -86,12 +73,8 @@ class _SmoothPageWrapperState extends State<SmoothPageWrapper>
       opacity: _fadeAnimation,
       child: ScaleTransition(
         scale: _scaleAnimation,
-        child: SlideTransition(
-          position: _slideAnimation,
-          child: widget.child,
-        ),
+        child: SlideTransition(position: _slideAnimation, child: widget.child),
       ),
     );
   }
 }
-

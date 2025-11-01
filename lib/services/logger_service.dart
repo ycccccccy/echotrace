@@ -6,13 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 日志级别
-enum LogLevel {
-  debug,
-  info,
-  warning,
-  error,
-  fatal,
-}
+enum LogLevel { debug, info, warning, error, fatal }
 
 /// 全局日志记录服务
 class LoggerService {
@@ -52,7 +46,9 @@ class LoggerService {
           throw TimeoutException('获取临时目录超时（可能在Isolate中）');
         },
       );
-      final logDir = Directory('${tempDir.path}${Platform.pathSeparator}echotrace_logs');
+      final logDir = Directory(
+        '${tempDir.path}${Platform.pathSeparator}echotrace_logs',
+      );
 
       if (!await logDir.exists()) {
         await logDir.create(recursive: true);
@@ -69,7 +65,11 @@ class LoggerService {
       }
 
       _isInitialized = true;
-      await _writeLog(LogLevel.info, 'LoggerService', '日志服务初始化成功 (调试模式: ${_debugMode ? "开启" : "关闭"})');
+      await _writeLog(
+        LogLevel.info,
+        'LoggerService',
+        '日志服务初始化成功 (调试模式: ${_debugMode ? "开启" : "关闭"})',
+      );
     } catch (e) {
       // 如果初始化失败（例如在Isolate中），标记为已初始化但不写入文件
       _isInitialized = true;
@@ -82,7 +82,11 @@ class LoggerService {
     _debugMode = enabled;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('debug_mode', enabled);
-    await _writeLog(LogLevel.info, 'LoggerService', '调试模式已${enabled ? "开启" : "关闭"}');
+    await _writeLog(
+      LogLevel.info,
+      'LoggerService',
+      '调试模式已${enabled ? "开启" : "关闭"}',
+    );
   }
 
   /// 获取当前调试模式状态
@@ -98,12 +102,17 @@ class LoggerService {
       await _logFile!.copy(archivePath);
       await _logFile!.delete();
       await _logFile!.create();
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   /// 写入日志
-  Future<void> _writeLog(LogLevel level, String tag, String message, [Object? error, StackTrace? stackTrace]) async {
+  Future<void> _writeLog(
+    LogLevel level,
+    String tag,
+    String message, [
+    Object? error,
+    StackTrace? stackTrace,
+  ]) async {
     if (_isInIsolate) {
       return;
     }
@@ -173,12 +182,22 @@ class LoggerService {
   }
 
   /// 错误日志
-  Future<void> error(String tag, String message, [Object? error, StackTrace? stackTrace]) async {
+  Future<void> error(
+    String tag,
+    String message, [
+    Object? error,
+    StackTrace? stackTrace,
+  ]) async {
     await _writeLog(LogLevel.error, tag, message, error, stackTrace);
   }
 
   /// 严重错误日志
-  Future<void> fatal(String tag, String message, [Object? error, StackTrace? stackTrace]) async {
+  Future<void> fatal(
+    String tag,
+    String message, [
+    Object? error,
+    StackTrace? stackTrace,
+  ]) async {
     await _writeLog(LogLevel.fatal, tag, message, error, stackTrace);
   }
 
@@ -261,8 +280,7 @@ class LoggerService {
         await _logFile!.create();
         await _writeLog(LogLevel.info, 'LoggerService', '日志已清空');
       }
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   /// 导出日志到指定路径
@@ -285,4 +303,3 @@ class LoggerService {
 
 /// 全局日志实例
 final logger = LoggerService();
-

@@ -29,26 +29,29 @@ class ElegantPageTransition extends StatelessWidget {
         }
 
         final screenWidth = MediaQuery.of(context).size.width;
-        final page = pageController.page ?? pageController.initialPage.toDouble();
+        final page =
+            pageController.page ?? pageController.initialPage.toDouble();
         final delta = (page - pageIndex).clamp(-1.5, 1.5);
         final absDelta = delta.abs().clamp(0.0, 1.0);
 
         // ============ 过渡参数 ============
-        
+
         // 1. 抵消PageView的水平位移
         final pageViewOffset = delta * screenWidth;
-        
+
         // 2. 透明度
         final opacity = Curves.easeInOutCubic.transform(1.0 - absDelta);
-        
+
         // 3. 暗化效果
         final brightness = Curves.easeInOut.transform(1.0 - absDelta * 0.12);
-        
+
         // 4. 轻微上移
         final verticalShift = absDelta * 12.0;
-        
+
         // 5. 颜色过渡层：在切换点前后软化颜色变化
-        final colorTransitionOpacity = _calculateColorTransitionOpacity(absDelta);
+        final colorTransitionOpacity = _calculateColorTransitionOpacity(
+          absDelta,
+        );
 
         return Stack(
           children: [
@@ -57,18 +60,31 @@ class ElegantPageTransition extends StatelessWidget {
               offset: Offset(pageViewOffset, -verticalShift),
               child: ColorFiltered(
                 colorFilter: ColorFilter.matrix([
-                  brightness, 0, 0, 0, 0,
-                  0, brightness, 0, 0, 0,
-                  0, 0, brightness, 0, 0,
-                  0, 0, 0, 1, 0,
+                  brightness,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  brightness,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  brightness,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  0,
                 ]),
-                child: Opacity(
-                  opacity: opacity,
-                  child: this.child,
-                ),
+                child: Opacity(opacity: opacity, child: this.child),
               ),
             ),
-            
+
             // 颜色过渡层 - 径向渐变的白色闪光
             if (colorTransitionOpacity > 0.001)
               Positioned.fill(
@@ -81,9 +97,15 @@ class ElegantPageTransition extends StatelessWidget {
                           center: Alignment.center,
                           radius: 1.2,
                           colors: [
-                            Colors.white.withOpacity(colorTransitionOpacity * 1.2),
-                            Colors.white.withOpacity(colorTransitionOpacity * 0.8),
-                            Colors.white.withOpacity(colorTransitionOpacity * 0.3),
+                            Colors.white.withOpacity(
+                              colorTransitionOpacity * 1.2,
+                            ),
+                            Colors.white.withOpacity(
+                              colorTransitionOpacity * 0.8,
+                            ),
+                            Colors.white.withOpacity(
+                              colorTransitionOpacity * 0.3,
+                            ),
                           ],
                           stops: const [0.0, 0.5, 1.0],
                         ),
@@ -92,7 +114,7 @@ class ElegantPageTransition extends StatelessWidget {
                   ),
                 ),
               ),
-            
+
             // 细微的边界高光
             if (opacity > 0.85)
               Positioned(
@@ -129,13 +151,13 @@ class ElegantPageTransition extends StatelessWidget {
     if (absDelta < 0.15 || absDelta > 0.85) {
       return 0.0;
     }
-    
+
     // 使用平滑的钟形曲线
     final normalizedDelta = (absDelta - 0.15) / 0.7;
     final bellCurve = Curves.easeInOutCubic.transform(
-      1.0 - (normalizedDelta - 0.5).abs() * 2
+      1.0 - (normalizedDelta - 0.5).abs() * 2,
     );
-    
+
     return bellCurve * 0.22; // 峰值22%不透明度
   }
 }
@@ -169,12 +191,10 @@ class _ElegantPageWrapperState extends State<ElegantPageWrapper>
       duration: widget.transitionDuration,
     );
 
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _controller,
-        curve: Curves.easeOut,
-      ),
-    );
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && !_hasAnimated) {
@@ -192,9 +212,6 @@ class _ElegantPageWrapperState extends State<ElegantPageWrapper>
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: widget.child,
-    );
+    return FadeTransition(opacity: _fadeAnimation, child: widget.child);
   }
 }

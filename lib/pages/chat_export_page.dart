@@ -54,18 +54,18 @@ class _ChatExportPageState extends State<ChatExportPage> {
     final result = await FilePicker.platform.getDirectoryPath(
       dialogTitle: '选择导出文件夹',
     );
-    
+
     if (result != null && mounted) {
       setState(() {
         _exportFolder = result;
       });
-      
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('export_folder', result);
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已设置导出文件夹: $result')),
-      );
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('已设置导出文件夹: $result')));
     }
   }
 
@@ -76,7 +76,7 @@ class _ChatExportPageState extends State<ChatExportPage> {
 
     try {
       final appState = context.read<AppState>();
-      
+
       if (!appState.databaseService.isConnected) {
         if (mounted) {
           setState(() {
@@ -87,7 +87,7 @@ class _ChatExportPageState extends State<ChatExportPage> {
       }
 
       final sessions = await appState.databaseService.getSessions();
-      
+
       // 过滤掉公众号/服务号
       final filteredSessions = sessions.where((session) {
         if (session.username.startsWith('gh_')) return false;
@@ -96,9 +96,10 @@ class _ChatExportPageState extends State<ChatExportPage> {
         if (session.username.startsWith('fmessage')) return false;
         if (session.username.startsWith('medianote')) return false;
         if (session.username.startsWith('floatbottle')) return false;
-        return session.username.contains('wxid_') || session.username.contains('@chatroom');
+        return session.username.contains('wxid_') ||
+            session.username.contains('@chatroom');
       }).toList();
-      
+
       if (mounted) {
         setState(() {
           _allSessions = filteredSessions;
@@ -110,20 +111,20 @@ class _ChatExportPageState extends State<ChatExportPage> {
         setState(() {
           _isLoadingSessions = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('加载会话列表失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('加载会话列表失败: $e')));
       }
     }
   }
 
   List<ChatSession> get _filteredSessions {
     if (_searchQuery.isEmpty) return _allSessions;
-    
+
     return _allSessions.where((session) {
       final displayName = session.displayName ?? session.username;
       return displayName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-             session.username.toLowerCase().contains(_searchQuery.toLowerCase());
+          session.username.toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
   }
 
@@ -154,12 +155,12 @@ class _ChatExportPageState extends State<ChatExportPage> {
 
   Future<void> _selectDateRange() async {
     if (_useAllTime) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已选择全部时间，无需设置日期范围')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已选择全部时间，无需设置日期范围')));
       return;
     }
-    
+
     final DateTimeRange? picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),
@@ -176,7 +177,7 @@ class _ChatExportPageState extends State<ChatExportPage> {
         );
       },
     );
-    
+
     if (picked != null && mounted) {
       setState(() {
         _selectedRange = picked;
@@ -186,24 +187,24 @@ class _ChatExportPageState extends State<ChatExportPage> {
 
   Future<void> _startExport() async {
     if (_selectedSessions.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请至少选择一个会话')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请至少选择一个会话')));
       return;
     }
 
     if (_exportFolder == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先选择导出文件夹')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先选择导出文件夹')));
       return;
     }
 
     // 显示确认对话框
-    final dateRangeText = _useAllTime 
+    final dateRangeText = _useAllTime
         ? '全部时间'
         : '${_selectedRange!.start.toLocal().toString().split(' ')[0]} 至 ${_selectedRange!.end.toLocal().toString().split(' ')[0]}';
-    
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -232,7 +233,7 @@ class _ChatExportPageState extends State<ChatExportPage> {
 
     // 显示进度对话框
     if (!mounted) return;
-    
+
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -271,18 +272,9 @@ class _ChatExportPageState extends State<ChatExportPage> {
           Expanded(
             child: Row(
               children: [
-                Expanded(
-                  flex: 2,
-                  child: _buildSessionList(),
-                ),
-                Container(
-                  width: 1,
-                  color: Colors.grey.withOpacity(0.2),
-                ),
-                Expanded(
-                  flex: 1,
-                  child: _buildExportSettings(),
-                ),
+                Expanded(flex: 2, child: _buildSessionList()),
+                Container(width: 1, color: Colors.grey.withOpacity(0.2)),
+                Expanded(flex: 1, child: _buildExportSettings()),
               ],
             ),
           ),
@@ -297,10 +289,7 @@ class _ChatExportPageState extends State<ChatExportPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(
-          bottom: BorderSide(
-            color: Colors.grey.withOpacity(0.1),
-            width: 1,
-          ),
+          bottom: BorderSide(color: Colors.grey.withOpacity(0.1), width: 1),
         ),
       ),
       child: Row(
@@ -313,9 +302,9 @@ class _ChatExportPageState extends State<ChatExportPage> {
           const SizedBox(width: 12),
           Text(
             '导出聊天记录',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
           ),
           const Spacer(),
           IconButton(
@@ -334,10 +323,7 @@ class _ChatExportPageState extends State<ChatExportPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(
-          bottom: BorderSide(
-            color: Colors.grey.withOpacity(0.1),
-            width: 1,
-          ),
+          bottom: BorderSide(color: Colors.grey.withOpacity(0.1), width: 1),
         ),
       ),
       child: Row(
@@ -359,7 +345,10 @@ class _ChatExportPageState extends State<ChatExportPage> {
                   borderRadius: BorderRadius.circular(8),
                   borderSide: const BorderSide(color: Colors.grey),
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
               ),
               onChanged: (value) {
                 setState(() {
@@ -372,7 +361,9 @@ class _ChatExportPageState extends State<ChatExportPage> {
           const SizedBox(width: 16),
           ElevatedButton.icon(
             onPressed: _toggleSelectAll,
-            icon: Icon(_selectAll ? Icons.check_box : Icons.check_box_outline_blank),
+            icon: Icon(
+              _selectAll ? Icons.check_box : Icons.check_box_outline_blank,
+            ),
             label: Text(_selectAll ? '取消全选' : '全选'),
             style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -381,9 +372,9 @@ class _ChatExportPageState extends State<ChatExportPage> {
           const SizedBox(width: 8),
           Text(
             '已选择: ${_selectedSessions.length}',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w500,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500),
           ),
         ],
       ),
@@ -407,7 +398,9 @@ class _ChatExportPageState extends State<ChatExportPage> {
                 Text(
                   '数据库未连接',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.7),
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -416,14 +409,16 @@ class _ChatExportPageState extends State<ChatExportPage> {
                   '请先在「数据管理」页面解密数据库文件',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.5),
                   ),
                 ),
               ],
             ),
           );
         }
-        
+
         if (_isLoadingSessions) {
           return ShimmerLoading(
             isLoading: true,
@@ -436,7 +431,7 @@ class _ChatExportPageState extends State<ChatExportPage> {
         }
 
         final sessions = _filteredSessions;
-        
+
         if (sessions.isEmpty) {
           return Center(
             child: Column(
@@ -451,7 +446,9 @@ class _ChatExportPageState extends State<ChatExportPage> {
                 Text(
                   _searchQuery.isEmpty ? '暂无会话' : '未找到匹配的会话',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.5),
                   ),
                 ),
               ],
@@ -465,11 +462,11 @@ class _ChatExportPageState extends State<ChatExportPage> {
           itemBuilder: (context, index) {
             final session = sessions[index];
             final isSelected = _selectedSessions.contains(session.username);
-            
+
             return Card(
               margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               elevation: isSelected ? 2 : 0,
-              color: isSelected 
+              color: isSelected
                   ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
                   : null,
               child: ListTile(
@@ -478,7 +475,9 @@ class _ChatExportPageState extends State<ChatExportPage> {
                       ? Theme.of(context).colorScheme.primary
                       : Colors.grey.shade300,
                   child: Text(
-                    StringUtils.getFirstChar(session.displayName ?? session.username),
+                    StringUtils.getFirstChar(
+                      session.displayName ?? session.username,
+                    ),
                     style: TextStyle(
                       color: isSelected ? Colors.white : Colors.grey.shade700,
                       fontWeight: FontWeight.bold,
@@ -488,7 +487,9 @@ class _ChatExportPageState extends State<ChatExportPage> {
                 title: Text(
                   session.displayName ?? session.username,
                   style: TextStyle(
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    fontWeight: isSelected
+                        ? FontWeight.w600
+                        : FontWeight.normal,
                   ),
                 ),
                 subtitle: Text(session.typeDescription),
@@ -515,12 +516,12 @@ class _ChatExportPageState extends State<ChatExportPage> {
             padding: const EdgeInsets.all(24),
             child: Text(
               '导出设置',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
             ),
           ),
-          
+
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -549,7 +550,7 @@ class _ChatExportPageState extends State<ChatExportPage> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  
+
                   // 日期范围选择
                   Text(
                     '日期范围',
@@ -577,8 +578,8 @@ class _ChatExportPageState extends State<ChatExportPage> {
                       _useAllTime
                           ? '全部时间'
                           : (_selectedRange != null
-                              ? '${_selectedRange!.start.toLocal().toString().split(' ')[0]} 至\n${_selectedRange!.end.toLocal().toString().split(' ')[0]}'
-                              : '选择日期范围'),
+                                ? '${_selectedRange!.start.toLocal().toString().split(' ')[0]} 至\n${_selectedRange!.end.toLocal().toString().split(' ')[0]}'
+                                : '选择日期范围'),
                     ),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.all(16),
@@ -586,7 +587,7 @@ class _ChatExportPageState extends State<ChatExportPage> {
                     ),
                   ),
                   const SizedBox(height: 24),
-                  
+
                   // 导出格式选择
                   Text(
                     '导出格式',
@@ -603,7 +604,7 @@ class _ChatExportPageState extends State<ChatExportPage> {
               ),
             ),
           ),
-          
+
           // 导出按钮（固定在底部）
           Padding(
             padding: const EdgeInsets.all(24),
@@ -615,7 +616,10 @@ class _ChatExportPageState extends State<ChatExportPage> {
                 label: const Text('开始导出'),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  textStyle: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
@@ -627,7 +631,7 @@ class _ChatExportPageState extends State<ChatExportPage> {
 
   Widget _buildFormatOption(String value, String label, String description) {
     final isSelected = _selectedFormat == value;
-    
+
     return InkWell(
       onTap: () => setState(() => _selectedFormat = value),
       child: Container(
@@ -722,25 +726,34 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
   Future<void> _startExport() async {
     final appState = context.read<AppState>();
     final databaseService = appState.databaseService;
-    
+
     // 计算时间戳
     int startTimestamp;
     int endTimestamp;
-    
+
     if (widget.useAllTime) {
       startTimestamp = 0; // 从最早开始
       endTimestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000; // 到现在
     } else {
-      startTimestamp = widget.dateRange.start.copyWith(hour: 0, minute: 0, second: 0).millisecondsSinceEpoch ~/ 1000;
-      final endOfDay = DateTime(widget.dateRange.end.year, widget.dateRange.end.month, widget.dateRange.end.day + 1)
-          .subtract(const Duration(seconds: 1));
+      startTimestamp =
+          widget.dateRange.start
+              .copyWith(hour: 0, minute: 0, second: 0)
+              .millisecondsSinceEpoch ~/
+          1000;
+      final endOfDay = DateTime(
+        widget.dateRange.end.year,
+        widget.dateRange.end.month,
+        widget.dateRange.end.day + 1,
+      ).subtract(const Duration(seconds: 1));
       endTimestamp = endOfDay.millisecondsSinceEpoch ~/ 1000;
     }
 
     for (int i = 0; i < widget.sessions.length; i++) {
       final username = widget.sessions[i];
-      final session = widget.allSessions.firstWhere((s) => s.username == username);
-      
+      final session = widget.allSessions.firstWhere(
+        (s) => s.username == username,
+      );
+
       setState(() {
         _currentIndex = i;
         _currentSessionName = session.displayName ?? session.username;
@@ -765,31 +778,51 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
         if (messages.isEmpty) {
           setState(() {
             _failedCount++;
-            _failedSessions.add('${session.displayName ?? session.username} (无消息)');
+            _failedSessions.add(
+              '${session.displayName ?? session.username} (无消息)',
+            );
           });
           continue;
         }
 
         // 构建文件路径
         final displayName = session.displayName ?? session.username;
-        final sanitizedName = displayName.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+        final sanitizedName = displayName.replaceAll(
+          RegExp(r'[<>:"/\\|?*]'),
+          '_',
+        );
         final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final extension = widget.format == 'json' ? 'json' : (widget.format == 'html' ? 'html' : 'xlsx');
-        final filePath = '${widget.exportFolder}${Platform.pathSeparator}${sanitizedName}_$timestamp.$extension';
+        final extension = widget.format == 'json'
+            ? 'json'
+            : (widget.format == 'html' ? 'html' : 'xlsx');
+        final filePath =
+            '${widget.exportFolder}${Platform.pathSeparator}${sanitizedName}_$timestamp.$extension';
 
         // 导出
         bool success = false;
         final exportService = ChatExportService(databaseService);
-        
+
         switch (widget.format) {
           case 'json':
-            success = await exportService.exportToJson(session, messages.reversed.toList(), filePath: filePath);
+            success = await exportService.exportToJson(
+              session,
+              messages.reversed.toList(),
+              filePath: filePath,
+            );
             break;
           case 'html':
-            success = await exportService.exportToHtml(session, messages.reversed.toList(), filePath: filePath);
+            success = await exportService.exportToHtml(
+              session,
+              messages.reversed.toList(),
+              filePath: filePath,
+            );
             break;
           case 'excel':
-            success = await exportService.exportToExcel(session, messages.reversed.toList(), filePath: filePath);
+            success = await exportService.exportToExcel(
+              session,
+              messages.reversed.toList(),
+              filePath: filePath,
+            );
             break;
         }
 
@@ -801,13 +834,17 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
         } else {
           setState(() {
             _failedCount++;
-            _failedSessions.add('${session.displayName ?? session.username} (导出失败)');
+            _failedSessions.add(
+              '${session.displayName ?? session.username} (导出失败)',
+            );
           });
         }
       } catch (e) {
         setState(() {
           _failedCount++;
-          _failedSessions.add('${session.displayName ?? session.username} ($e)');
+          _failedSessions.add(
+            '${session.displayName ?? session.username} ($e)',
+          );
         });
       }
 
@@ -820,9 +857,11 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final progress = widget.sessions.isEmpty ? 0.0 : (_currentIndex + 1) / widget.sessions.length;
+    final progress = widget.sessions.isEmpty
+        ? 0.0
+        : (_currentIndex + 1) / widget.sessions.length;
     final remaining = widget.sessions.length - (_currentIndex + 1);
-    
+
     return AlertDialog(
       title: Text(_isCompleted ? '导出完成' : '正在导出'),
       content: SizedBox(
@@ -849,8 +888,10 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
               const SizedBox(height: 4),
               Text('剩余会话: $remaining 个'),
               const SizedBox(height: 8),
-              Text('已导出消息: $_totalMessagesProcessed 条', 
-                style: TextStyle(color: Colors.grey.shade600)),
+              Text(
+                '已导出消息: $_totalMessagesProcessed 条',
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
             ] else ...[
               Row(
                 children: [
@@ -862,7 +903,11 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
                       children: [
                         Text(
                           '成功: $_successCount',
-                          style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16),
+                          style: const TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
                         ),
                         Text(
                           '总计导出: $_totalMessagesProcessed 条消息',
@@ -872,7 +917,10 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
                           const SizedBox(height: 4),
                           Text(
                             '失败: $_failedCount',
-                            style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ],
@@ -887,17 +935,27 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
               ),
               if (_failedSessions.isNotEmpty) ...[
                 const SizedBox(height: 16),
-                const Text('失败列表:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text(
+                  '失败列表:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 8),
                 Container(
                   constraints: const BoxConstraints(maxHeight: 200),
                   child: SingleChildScrollView(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: _failedSessions.map((name) => Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Text('• $name', style: const TextStyle(fontSize: 12)),
-                      )).toList(),
+                      children: _failedSessions
+                          .map(
+                            (name) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(
+                                '• $name',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          )
+                          .toList(),
                     ),
                   ),
                 ),
@@ -916,4 +974,3 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
     );
   }
 }
-

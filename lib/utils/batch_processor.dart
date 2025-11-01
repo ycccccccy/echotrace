@@ -15,7 +15,7 @@ class BatchProcessor {
   }) async {
     for (int i = 0; i < items.length; i++) {
       await processor(items[i], i);
-      
+
       // 每批处理完后让出控制权，避免界面冻结
       if (yieldEveryBatch && (i + 1) % batchSize == 0) {
         await Future.delayed(Duration.zero);
@@ -37,17 +37,17 @@ class BatchProcessor {
     int batchSize = 500,
   }) async {
     final results = <R>[];
-    
+
     for (int i = 0; i < items.length; i++) {
       final result = await processor(items[i], i);
       results.add(result);
-      
+
       // 每批处理完后让出控制权，避免界面冻结
       if ((i + 1) % batchSize == 0) {
         await Future.delayed(Duration.zero);
       }
     }
-    
+
     return results;
   }
 
@@ -68,17 +68,16 @@ class BatchProcessor {
     int batchSize = 500,
   }) async {
     R result = initialValue;
-    
+
     for (int i = 0; i < items.length; i++) {
       result = await processor(result, items[i]);
-      
+
       // 每批处理完后让出控制权，避免界面冻结
       if ((i + 1) % batchSize == 0) {
         await Future.delayed(Duration.zero);
       }
     }
-    
+
     return result;
   }
 }
-

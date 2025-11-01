@@ -33,11 +33,11 @@ class DecryptServiceGo {
   }
 
   /// 解密数据库文件
-  /// 
+  ///
   /// [dbPath] 输入数据库路径
   /// [hexKey] 十六进制格式的密钥（64个字符）
   /// [progressCallback] 进度回调（当前页，总页数）
-  /// 
+  ///
   /// 返回解密后的数据库文件路径
   Future<String> decryptDatabase(
     String dbPath,
@@ -57,7 +57,8 @@ class DecryptServiceGo {
 
       // 生成输出路径
       final tempDir = await getTemporaryDirectory();
-      final outputPath = '${tempDir.path}${Platform.pathSeparator}decrypted_${DateTime.now().millisecondsSinceEpoch}.db';
+      final outputPath =
+          '${tempDir.path}${Platform.pathSeparator}decrypted_${DateTime.now().millisecondsSinceEpoch}.db';
 
       // 获取文件大小用于进度估算
       final fileSize = await file.length();
@@ -93,4 +94,3 @@ class DecryptServiceGo {
     return _ffi.decryptDatabase(inputPath, outputPath, hexKey);
   }
 }
-

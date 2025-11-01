@@ -5,10 +5,7 @@ class ActivityHeatmap {
   final Map<int, Map<int, int>> data; // 小时 -> 星期几 -> 消息数量
   final int maxCount; // 最大消息数，用于数据归一化
 
-  ActivityHeatmap({
-    required this.data,
-    required this.maxCount,
-  });
+  ActivityHeatmap({required this.data, required this.maxCount});
 
   /// 获取指定时间的消息数
   int getCount(int hour, int weekday) {
@@ -41,19 +38,27 @@ class ActivityHeatmap {
   }
 
   Map<String, dynamic> toJson() => {
-    'data': data.map((k, v) => MapEntry(k.toString(), v.map((k2, v2) => MapEntry(k2.toString(), v2)))),
+    'data': data.map(
+      (k, v) => MapEntry(
+        k.toString(),
+        v.map((k2, v2) => MapEntry(k2.toString(), v2)),
+      ),
+    ),
     'maxCount': maxCount,
   };
 
-  factory ActivityHeatmap.fromJson(Map<String, dynamic> json) => ActivityHeatmap(
-    data: (json['data'] as Map<String, dynamic>).map(
-      (k, v) => MapEntry(
-        int.parse(k),
-        (v as Map<String, dynamic>).map((k2, v2) => MapEntry(int.parse(k2), v2 as int)),
-      ),
-    ),
-    maxCount: json['maxCount'],
-  );
+  factory ActivityHeatmap.fromJson(Map<String, dynamic> json) =>
+      ActivityHeatmap(
+        data: (json['data'] as Map<String, dynamic>).map(
+          (k, v) => MapEntry(
+            int.parse(k),
+            (v as Map<String, dynamic>).map(
+              (k2, v2) => MapEntry(int.parse(k2), v2 as int),
+            ),
+          ),
+        ),
+        maxCount: json['maxCount'],
+      );
 }
 
 /// 亲密度日历数据
@@ -83,7 +88,7 @@ class IntimacyCalendar {
     if (maxDailyCount == 0) return 0;
     final count = getMessageCount(date);
     final ratio = count / maxDailyCount;
-    
+
     if (ratio == 0) return 0;
     if (ratio < 0.2) return 1;
     if (ratio < 0.4) return 2;
@@ -99,23 +104,24 @@ class IntimacyCalendar {
         .reduce((a, b) => a.value > b.value ? a : b)
         .key;
   }
-  
+
   /// 获取按月统计的消息数
   Map<String, int> get monthlyData {
     final result = <String, int>{};
     for (final entry in dailyMessages.entries) {
-      final key = '${entry.key.year}-${entry.key.month.toString().padLeft(2, '0')}';
+      final key =
+          '${entry.key.year}-${entry.key.month.toString().padLeft(2, '0')}';
       result[key] = (result[key] ?? 0) + entry.value;
     }
     return result;
   }
-  
+
   Map<String, dynamic> toJson() {
     final dailyMessagesJson = <String, int>{};
     for (final entry in dailyMessages.entries) {
       dailyMessagesJson[entry.key.toIso8601String()] = entry.value;
     }
-    
+
     return {
       'username': username,
       'dailyMessages': dailyMessagesJson,
@@ -124,14 +130,14 @@ class IntimacyCalendar {
       'maxDailyCount': maxDailyCount,
     };
   }
-  
+
   factory IntimacyCalendar.fromJson(Map<String, dynamic> json) {
     final dailyMessagesJson = json['dailyMessages'] as Map<String, dynamic>;
     final dailyMessages = <DateTime, int>{};
     for (final entry in dailyMessagesJson.entries) {
       dailyMessages[DateTime.parse(entry.key)] = entry.value as int;
     }
-    
+
     return IntimacyCalendar(
       username: json['username'] as String,
       dailyMessages: dailyMessages,
@@ -192,7 +198,7 @@ class ConversationBalance {
     if (initiativeRatio < 0.8) return 'other';
     return 'balanced';
   }
-  
+
   Map<String, dynamic> toJson() => {
     'username': username,
     'sentCount': sentCount,
@@ -205,7 +211,7 @@ class ConversationBalance {
     'segmentsInitiatedByMe': segmentsInitiatedByMe,
     'segmentsInitiatedByOther': segmentsInitiatedByOther,
   };
-  
+
   factory ConversationBalance.fromJson(Map<String, dynamic> json) {
     return ConversationBalance(
       username: json['username'] as String,
@@ -300,11 +306,12 @@ class LinguisticStyle {
     'revokedMessageCount': revokedMessageCount,
   };
 
-  factory LinguisticStyle.fromJson(Map<String, dynamic> json) => LinguisticStyle(
-    avgMessageLength: json['avgMessageLength'],
-    punctuationUsage: Map<String, int>.from(json['punctuationUsage']),
-    revokedMessageCount: json['revokedMessageCount'],
-  );
+  factory LinguisticStyle.fromJson(Map<String, dynamic> json) =>
+      LinguisticStyle(
+        avgMessageLength: json['avgMessageLength'],
+        punctuationUsage: Map<String, int>.from(json['punctuationUsage']),
+        revokedMessageCount: json['revokedMessageCount'],
+      );
 }
 
 /// 好友排名项（用于挚友榜）
@@ -331,13 +338,14 @@ class FriendshipRanking {
     'details': details,
   };
 
-  factory FriendshipRanking.fromJson(Map<String, dynamic> json) => FriendshipRanking(
-    username: json['username'],
-    displayName: json['displayName'],
-    count: json['count'],
-    percentage: json['percentage'],
-    details: json['details'],
-  );
+  factory FriendshipRanking.fromJson(Map<String, dynamic> json) =>
+      FriendshipRanking(
+        username: json['username'],
+        displayName: json['displayName'],
+        count: json['count'],
+        percentage: json['percentage'],
+        details: json['details'],
+      );
 }
 
 /// 社交风格数据（主动发起率）
@@ -350,11 +358,14 @@ class SocialStyleData {
     'initiativeRanking': initiativeRanking.map((e) => e.toJson()).toList(),
   };
 
-  factory SocialStyleData.fromJson(Map<String, dynamic> json) => SocialStyleData(
-    initiativeRanking: List<FriendshipRanking>.from(
-      (json['initiativeRanking'] as List).map((e) => FriendshipRanking.fromJson(e))
-    ),
-  );
+  factory SocialStyleData.fromJson(Map<String, dynamic> json) =>
+      SocialStyleData(
+        initiativeRanking: List<FriendshipRanking>.from(
+          (json['initiativeRanking'] as List).map(
+            (e) => FriendshipRanking.fromJson(e),
+          ),
+        ),
+      );
 }
 
 /// 聊天巅峰日
@@ -374,7 +385,8 @@ class ChatPeakDay {
     this.topFriendDisplayName,
     this.topFriendMessageCount,
     this.topFriendPercentage,
-  }) : formattedDate = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }) : formattedDate =
+           '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
   Map<String, dynamic> toJson() => {
     'date': date.toIso8601String(),
@@ -414,11 +426,12 @@ class MessageTypeStats {
     'percentage': percentage,
   };
 
-  factory MessageTypeStats.fromJson(Map<String, dynamic> json) => MessageTypeStats(
-    typeName: json['typeName'],
-    count: json['count'],
-    percentage: json['percentage'],
-  );
+  factory MessageTypeStats.fromJson(Map<String, dynamic> json) =>
+      MessageTypeStats(
+        typeName: json['typeName'],
+        count: json['count'],
+        percentage: json['percentage'],
+      );
 }
 
 /// 消息长度分析
@@ -451,16 +464,16 @@ class MessageLengthData {
     'totalTextMessages': totalTextMessages,
   };
 
-  factory MessageLengthData.fromJson(Map<String, dynamic> json) => MessageLengthData(
-    averageLength: json['averageLength'],
-    longestLength: json['longestLength'],
-    longestContent: json['longestContent'],
-    longestSentTo: json['longestSentTo'],
-    longestSentToDisplayName: json['longestSentToDisplayName'],
-    longestMessageTime: json['longestMessageTime'] != null 
-        ? DateTime.parse(json['longestMessageTime'])
-        : null,
-    totalTextMessages: json['totalTextMessages'],
-  );
+  factory MessageLengthData.fromJson(Map<String, dynamic> json) =>
+      MessageLengthData(
+        averageLength: json['averageLength'],
+        longestLength: json['longestLength'],
+        longestContent: json['longestContent'],
+        longestSentTo: json['longestSentTo'],
+        longestSentToDisplayName: json['longestSentToDisplayName'],
+        longestMessageTime: json['longestMessageTime'] != null
+            ? DateTime.parse(json['longestMessageTime'])
+            : null,
+        totalTextMessages: json['totalTextMessages'],
+      );
 }
-

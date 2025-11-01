@@ -21,7 +21,7 @@ class BigNumberCard extends StatefulWidget {
   State<BigNumberCard> createState() => _BigNumberCardState();
 }
 
-class _BigNumberCardState extends State<BigNumberCard> 
+class _BigNumberCardState extends State<BigNumberCard>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
@@ -35,13 +35,15 @@ class _BigNumberCardState extends State<BigNumberCard>
       vsync: this,
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 0.8,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
 
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
-    );
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeIn));
 
     _controller.forward();
   }
@@ -66,11 +68,7 @@ class _BigNumberCardState extends State<BigNumberCard>
             mainAxisSize: MainAxisSize.min,
             children: [
               if (widget.icon != null) ...[
-                Icon(
-                  widget.icon,
-                  size: 64,
-                  color: color,
-                ),
+                Icon(widget.icon, size: 64, color: color),
                 const SizedBox(height: 24),
               ],
               AnimatedNumber(
@@ -103,11 +101,7 @@ class AnimatedNumber extends StatefulWidget {
   final String number;
   final TextStyle? style;
 
-  const AnimatedNumber({
-    super.key,
-    required this.number,
-    this.style,
-  });
+  const AnimatedNumber({super.key, required this.number, this.style});
 
   @override
   State<AnimatedNumber> createState() => _AnimatedNumberState();
@@ -123,7 +117,7 @@ class _AnimatedNumberState extends State<AnimatedNumber>
   void initState() {
     super.initState();
     _targetNumber = _parseNumber(widget.number);
-    
+
     _controller = AnimationController(
       duration: const Duration(milliseconds: 1500),
       vsync: this,
@@ -167,4 +161,3 @@ class _AnimatedNumberState extends State<AnimatedNumber>
     );
   }
 }
-

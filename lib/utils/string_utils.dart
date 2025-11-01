@@ -14,7 +14,7 @@ class StringUtils {
   /// - 移除不可见的控制字符
   /// - 修复孤立的代理对（emoji等字符的编码问题）
   /// - 确保字符串能在Flutter界面中安全显示
-  /// 
+  ///
   /// 示例：
   /// ```dart
   /// cleanUtf16('Hello 😊 World')  // 正常返回（emoji是有效的代理对）
@@ -23,21 +23,21 @@ class StringUtils {
   /// ```
   static String cleanUtf16(String input) {
     if (input.isEmpty) return input;
-    
+
     try {
       // 移除控制字符和无效字符
       String cleaned = input.replaceAll(
-        RegExp(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]'), 
-        ''
+        RegExp(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F-\x9F]'),
+        '',
       );
-      
+
       // 处理孤立的代理对（UTF-16编码问题）
       final codeUnits = cleaned.codeUnits;
       final validUnits = <int>[];
-      
+
       for (int i = 0; i < codeUnits.length; i++) {
         final unit = codeUnits[i];
-        
+
         // 检查高代理（0xD800-0xDBFF）
         if (unit >= 0xD800 && unit <= 0xDBFF) {
           // 高代理必须后跟低代理
@@ -54,34 +54,34 @@ class StringUtils {
           // 孤立的高代理，跳过
           continue;
         }
-        
+
         // 检查低代理（0xDC00-0xDFFF）
         if (unit >= 0xDC00 && unit <= 0xDFFF) {
           // 孤立的低代理，跳过
           continue;
         }
-        
+
         // 普通字符
         validUnits.add(unit);
       }
-      
+
       return String.fromCharCodes(validUnits);
     } catch (e) {
       // 如果清理失败，使用正则表达式保留安全字符
       // 保留：ASCII可打印字符、中文、全角空格和标点
       return input.replaceAll(
-        RegExp(r'[^\u0020-\u007E\u4E00-\u9FFF\u3000-\u303F]'), 
-        ''
+        RegExp(r'[^\u0020-\u007E\u4E00-\u9FFF\u3000-\u303F]'),
+        '',
       );
     }
   }
-  
+
   /// 安全获取字符串的第一个字符
   ///
   /// 专门用于头像显示等场景，能正确处理emoji等特殊字符
   ///
   /// 重要提醒：不要直接用substring(0, 1)，那样会截断emoji等字符！
-  /// 
+  ///
   /// 示例：
   /// ```dart
   /// getFirstChar('张三')      // '张'
@@ -89,7 +89,7 @@ class StringUtils {
   /// getFirstChar('John')     // 'J'
   /// getFirstChar('')         // '?' (默认字符)
   /// ```
-  /// 
+  ///
   /// 原理：
   /// - emoji 如 😊 在 UTF-16 中是一个代理对：[0xD83D, 0xDE0A]
   /// - 如果用 substring(0,1) 只会取 0xD83D（孤立的高代理）
@@ -98,15 +98,15 @@ class StringUtils {
   static String getFirstChar(String input, {String defaultChar = '?'}) {
     final cleaned = cleanUtf16(input);
     if (cleaned.isEmpty) return defaultChar;
-    
+
     try {
       // 获取code units
       final codeUnits = cleaned.codeUnits;
-      
+
       if (codeUnits.isEmpty) return defaultChar;
-      
+
       final firstUnit = codeUnits[0];
-      
+
       // 检查是否是高代理（emoji等的第一部分）
       if (firstUnit >= 0xD800 && firstUnit <= 0xDBFF) {
         // 需要包含下一个code unit（低代理）
@@ -120,23 +120,22 @@ class StringUtils {
         // 如果没有配对的低代理，返回默认字符
         return defaultChar;
       }
-      
+
       // 检查是否是低代理（不应该出现在第一个位置）
       if (firstUnit >= 0xDC00 && firstUnit <= 0xDFFF) {
         return defaultChar;
       }
-      
+
       // 普通字符，直接返回
       return String.fromCharCodes([firstUnit]).toUpperCase();
     } catch (e) {
       return defaultChar;
     }
   }
-  
+
   /// 清理并验证字符串，如果为空返回默认值
   static String cleanOrDefault(String input, String defaultValue) {
     final cleaned = cleanUtf16(input);
     return cleaned.isEmpty ? defaultValue : cleaned;
   }
 }
-

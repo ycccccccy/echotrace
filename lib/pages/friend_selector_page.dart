@@ -37,13 +37,13 @@ class _FriendSelectorPageState extends State<FriendSelectorPage> {
 
   Future<void> _loadFriends() async {
     setState(() => _isLoading = true);
-    
+
     try {
       final friends = await widget.dualReportService.getRecommendedFriends(
         limit: 50,
         filterYear: widget.year,
       );
-      
+
       if (mounted) {
         setState(() {
           _friends = friends;
@@ -54,9 +54,9 @@ class _FriendSelectorPageState extends State<FriendSelectorPage> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('加载好友列表失败: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('加载好友列表失败: $e')));
       }
     }
   }
@@ -79,7 +79,9 @@ class _FriendSelectorPageState extends State<FriendSelectorPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('选择好友 - ${widget.year != null ? '${widget.year}年' : '历史以来'}'),
+        title: Text(
+          '选择好友 - ${widget.year != null ? '${widget.year}年' : '历史以来'}',
+        ),
       ),
       body: Column(
         children: [
@@ -107,25 +109,25 @@ class _FriendSelectorPageState extends State<FriendSelectorPage> {
               onChanged: _filterFriends,
             ),
           ),
-          
+
           // 好友列表
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _filteredFriends.isEmpty
-                    ? Center(
-                        child: Text(
-                          _searchQuery.isEmpty ? '暂无好友数据' : '未找到匹配的好友',
-                          style: const TextStyle(color: Colors.grey),
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: _filteredFriends.length,
-                        itemBuilder: (context, index) {
-                          final friend = _filteredFriends[index];
-                          return _buildFriendItem(friend, index + 1);
-                        },
-                      ),
+                ? Center(
+                    child: Text(
+                      _searchQuery.isEmpty ? '暂无好友数据' : '未找到匹配的好友',
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: _filteredFriends.length,
+                    itemBuilder: (context, index) {
+                      final friend = _filteredFriends[index];
+                      return _buildFriendItem(friend, index + 1);
+                    },
+                  ),
           ),
         ],
       ),
@@ -135,7 +137,7 @@ class _FriendSelectorPageState extends State<FriendSelectorPage> {
   Widget _buildFriendItem(Map<String, dynamic> friend, int rank) {
     final displayName = friend['displayName'] as String;
     final messageCount = friend['messageCount'] as int;
-    
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: ListTile(
@@ -151,19 +153,13 @@ class _FriendSelectorPageState extends State<FriendSelectorPage> {
         ),
         title: Text(
           displayName,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w500,
-          ),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
         subtitle: Text(
           '$messageCount 条消息',
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey[600],
-          ),
+          style: TextStyle(fontSize: 14, color: Colors.grey[600]),
         ),
         trailing: const Icon(Icons.arrow_forward_ios, size: 16),
         onTap: () {
@@ -182,4 +178,3 @@ class _FriendSelectorPageState extends State<FriendSelectorPage> {
     return Colors.grey;
   }
 }
-

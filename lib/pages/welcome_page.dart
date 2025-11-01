@@ -22,19 +22,22 @@ class WelcomePage extends StatelessWidget {
                       // 标题
                       Text(
                         'EchoTrace',
-                        style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: -0.5,
-                        ),
+                        style: Theme.of(context).textTheme.displayLarge
+                            ?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: -0.5,
+                            ),
                       ),
-                      
+
                       const SizedBox(height: 16),
-                      
+
                       // 副标题
                       Text(
                         '微信聊天记录查看工具',
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.5),
                           fontWeight: FontWeight.w400,
                         ),
                       ),
@@ -44,7 +47,7 @@ class WelcomePage extends StatelessWidget {
               ),
             ),
           ),
-          
+
           // 免责声明 - 页面底部
           Container(
             width: double.infinity,
@@ -54,10 +57,14 @@ class WelcomePage extends StatelessWidget {
                 constraints: const BoxConstraints(maxWidth: 500),
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.surfaceVariant.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: Theme.of(context).colorScheme.outline.withOpacity(0.1),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.outline.withOpacity(0.1),
                   ),
                 ),
                 child: Row(

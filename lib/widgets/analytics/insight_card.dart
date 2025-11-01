@@ -53,11 +53,7 @@ class _InsightCardState extends State<InsightCard> {
                     color: Theme.of(context).colorScheme.primary,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(
-                    widget.icon,
-                    color: Colors.white,
-                    size: 24,
-                  ),
+                  child: Icon(widget.icon, color: Colors.white, size: 24),
                 ),
                 const SizedBox(width: 16),
               ],
@@ -76,7 +72,9 @@ class _InsightCardState extends State<InsightCard> {
                       Text(
                         widget.subtitle!,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withOpacity(0.6),
                         ),
                       ),
                     ],
@@ -92,4 +90,3 @@ class _InsightCardState extends State<InsightCard> {
     );
   }
 }
-

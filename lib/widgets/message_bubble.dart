@@ -35,34 +35,40 @@ class _MessageBubbleState extends State<MessageBubble> {
     super.initState();
 
     // 如果是拍一拍消息，异步查询wxid对应的真实姓名
-    if (widget.message.localType == 266287972401 && widget.message.patInfo != null) {
+    if (widget.message.localType == 266287972401 &&
+        widget.message.patInfo != null) {
       _loadPatMessageNames();
     }
   }
-  
+
   /// 加载拍一拍消息中的真实姓名
   Future<void> _loadPatMessageNames() async {
     final patInfo = widget.message.patInfo;
     if (patInfo == null) return;
-    
+
     final template = patInfo['template'] as String?;
     final wxids = patInfo['wxids'] as List<dynamic>?;
-    
+
     if (template == null || wxids == null || wxids.isEmpty) {
       return;
     }
-    
+
     try {
       final appState = context.read<AppState>();
       final wxidList = wxids.cast<String>();
-      
+
       // 查询所有wxid的真实姓名
-      final wxidToName = await appState.databaseService.getDisplayNames(wxidList);
-      
+      final wxidToName = await appState.databaseService.getDisplayNames(
+        wxidList,
+      );
+
       // 渲染消息
       if (mounted) {
         setState(() {
-          _renderedPatMessage = XmlMessageParser.renderPatMessage(template, wxidToName);
+          _renderedPatMessage = XmlMessageParser.renderPatMessage(
+            template,
+            wxidToName,
+          );
         });
       }
     } catch (e) {
@@ -84,14 +90,15 @@ class _MessageBubbleState extends State<MessageBubble> {
   String _cleanString(String input) {
     return StringUtils.cleanUtf16(input);
   }
-  
+
   /// 获取显示内容（处理拍一拍消息）
   String _getDisplayContent() {
     // 如果是拍一拍消息且已渲染，使用渲染后的内容
-    if (widget.message.localType == 266287972401 && _renderedPatMessage != null) {
+    if (widget.message.localType == 266287972401 &&
+        _renderedPatMessage != null) {
       return _renderedPatMessage!;
     }
-    
+
     final content = widget.message.displayContent;
 
     return content;
@@ -102,22 +109,31 @@ class _MessageBubbleState extends State<MessageBubble> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
-        crossAxisAlignment: widget.isFromMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: widget.isFromMe
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
         children: [
           // 时间分隔符（只在需要时显示）
           if (widget.shouldShowTime)
             Center(
               child: Container(
                 margin: const EdgeInsets.symmetric(vertical: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.surfaceVariant.withOpacity(0.5),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   _cleanString(widget.message.formattedCreateTime),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.6),
                     fontSize: 10,
                   ),
                 ),
@@ -125,9 +141,14 @@ class _MessageBubbleState extends State<MessageBubble> {
             ),
 
           // 群聊中显示发送者名称（在消息气泡上方）
-          if (!widget.isFromMe && widget.senderDisplayName != null && widget.senderDisplayName!.isNotEmpty)
+          if (!widget.isFromMe &&
+              widget.senderDisplayName != null &&
+              widget.senderDisplayName!.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(left: 44, bottom: 4), // 44 = 头像宽度(36) + 间距(8)
+              padding: const EdgeInsets.only(
+                left: 44,
+                bottom: 4,
+              ), // 44 = 头像宽度(36) + 间距(8)
               child: SelectableText(
                 _cleanString(widget.senderDisplayName!),
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -141,8 +162,12 @@ class _MessageBubbleState extends State<MessageBubble> {
           // 消息内容
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: widget.isFromMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-            children: widget.isFromMe ? _buildFromMeLayout(context) : _buildFromOtherLayout(context),
+            mainAxisAlignment: widget.isFromMe
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
+            children: widget.isFromMe
+                ? _buildFromMeLayout(context)
+                : _buildFromOtherLayout(context),
           ),
         ],
       ),
@@ -170,16 +195,19 @@ class _MessageBubbleState extends State<MessageBubble> {
                     ),
                     child: SelectableText(
                       _cleanString(_getDisplayContent()),
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.white,
-                      ),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodyMedium?.copyWith(color: Colors.white),
                     ),
                   ),
             // 引用消息（放在下方）
             if (widget.message.quotedContent.isNotEmpty)
               Container(
                 margin: const EdgeInsets.only(top: 4),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.05),
                   borderRadius: const BorderRadius.only(
@@ -191,7 +219,9 @@ class _MessageBubbleState extends State<MessageBubble> {
                 child: SelectableText(
                   _cleanString(widget.message.quotedContent),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.6),
                   ),
                 ),
               ),
@@ -217,7 +247,9 @@ class _MessageBubbleState extends State<MessageBubble> {
       // 头像
       CircleAvatar(
         radius: 18,
-        backgroundColor: Theme.of(context).colorScheme.secondary.withOpacity(0.2),
+        backgroundColor: Theme.of(
+          context,
+        ).colorScheme.secondary.withOpacity(0.2),
         child: Icon(
           Icons.person,
           size: 20,
@@ -240,20 +272,23 @@ class _MessageBubbleState extends State<MessageBubble> {
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: _getMessageBubbleColor(context),
-                     borderRadius: BorderRadius.circular(12),
-                   ),
-                   child: SelectableText(
-                     _cleanString(_getDisplayContent()),
-                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                       color: _getMessageTextColor(context),
-                     ),
-                   ),
-                 ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: SelectableText(
+                      _cleanString(_getDisplayContent()),
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: _getMessageTextColor(context),
+                      ),
+                    ),
+                  ),
             // 引用消息（放在下方）
             if (widget.message.quotedContent.isNotEmpty)
               Container(
                 margin: const EdgeInsets.only(top: 4),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.04),
                   borderRadius: const BorderRadius.only(
@@ -265,7 +300,9 @@ class _MessageBubbleState extends State<MessageBubble> {
                 child: SelectableText(
                   _cleanString(widget.message.quotedContent),
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.6),
                   ),
                 ),
               ),
