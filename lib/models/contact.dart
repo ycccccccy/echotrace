@@ -22,6 +22,8 @@ class Contact {
   final String description;
   final List<int> extraBuffer;
   final int chatRoomType;
+  final int type;
+  final int chatroomFlag;
 
   Contact({
     required this.id,
@@ -46,6 +48,8 @@ class Contact {
     required this.description,
     required this.extraBuffer,
     required this.chatRoomType,
+    this.type = 0,
+    this.chatroomFlag = 0,
   });
 
   /// 从数据库Map创建Contact对象
@@ -75,6 +79,8 @@ class Contact {
           ? List<int>.from(map['extra_buffer'])
           : [],
       chatRoomType: map['chat_room_type'] ?? 0,
+      type: map['type'] ?? 0,
+      chatroomFlag: map['chatroom_flag'] ?? 0,
     );
   }
 
@@ -112,6 +118,18 @@ class Contact {
 
   /// 是否为公众号
   bool get isOfficialAccount => localType == 2;
+
+  /// 是否具备好友标记（基于 type 字段）
+  bool get hasFriendFlag {
+    if (type == 0) return false;
+    // 参考已知的 rcontact.type 位标志：
+    // 0x1 -> 普通联系人，0x8 -> 已通过验证的好友/联系人
+    // 0x200/0x400 -> 企业或双向好友扩展位
+    return (type & 0x1) != 0 ||
+        (type & 0x8) != 0 ||
+        (type & 0x200) != 0 ||
+        (type & 0x400) != 0;
+  }
 
   /// 是否已删除
   bool get isDeleted => deleteFlag == 1;

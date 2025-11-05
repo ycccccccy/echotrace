@@ -19,6 +19,11 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
+  static const int _initialMessageBatch = 90;
+  static const int _loadMoreBatch = 210;
+  static const double _loadTriggerDistance = 160.0;
+  static const double _prefetchTriggerDistance = 560.0;
+
   ChatSession? _selectedSession;
   List<ChatSession> _sessions = [];
   List<ChatSession> _filteredSessions = []; // 搜索过滤后的会话列表
@@ -33,6 +38,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   Map<String, String> _senderDisplayNames = {};
   late AnimationController _refreshController;
   DateTime? _lastInitialLoadTime;
+  bool _prefetchScheduled = false;
 
   // 搜索相关
   bool _isSearching = false;
@@ -111,9 +117,28 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   }
 
   void _onScroll() {
-    // 接近顶部时加载更早消息
-    if (_scrollController.hasClients &&
-        _scrollController.position.pixels <= 200) {
+    if (!_scrollController.hasClients || !_hasMoreMessages) {
+      return;
+    }
+
+    final position = _scrollController.position;
+    final distanceToTop = position.pixels;
+
+    if (distanceToTop > _prefetchTriggerDistance) {
+      _prefetchScheduled = false;
+    }
+
+    if (_isLoadingMoreMessages) {
+      return;
+    }
+
+    if (distanceToTop <= _loadTriggerDistance) {
+      _prefetchScheduled = false;
+      _loadMoreMessages();
+    } else if (distanceToTop <= _prefetchTriggerDistance &&
+        position.userScrollDirection == ScrollDirection.reverse &&
+        !_prefetchScheduled) {
+      _prefetchScheduled = true;
       _loadMoreMessages();
     }
   }
@@ -204,17 +229,19 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       _senderDisplayNames = {}; // 清空姓名缓存
       _messages = []; // 清空旧消息
       _lastInitialLoadTime = null; // 重置初次加载时间
+      _prefetchScheduled = false;
     });
 
     // 异步加载消息 - 初次只加载少量消息以提升性能
     try {
       final appState = context.read<AppState>();
-      const initialLoadLimit = 20; // 初次只加载20条消息
-
-      await logger.info('ChatPage', '查询消息，limit=$initialLoadLimit, offset=0');
+      await logger.info(
+        'ChatPage',
+        '查询消息，limit=$_initialMessageBatch, offset=0',
+      );
       final messages = await appState.databaseService.getMessages(
         session.username,
-        limit: initialLoadLimit,
+        limit: _initialMessageBatch,
         offset: 0,
       );
 
@@ -251,7 +278,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           _messages = messages.reversed.toList(); // 反转顺序，最新消息在下方
           _isLoadingMessages = false;
           _currentOffset = messages.length;
-          _hasMoreMessages = messages.length >= initialLoadLimit;
+          _hasMoreMessages = messages.length >= _initialMessageBatch;
         });
 
         // 自动滚动到底部（最新消息）
@@ -270,7 +297,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         });
 
         // 如果消息数量接近初始加载限制，延迟自动加载更多消息，提升用户体验
-        if (messages.length >= initialLoadLimit - 5) {
+        if (messages.length >= _initialMessageBatch - 10) {
           // 记录初次加载时间，用于避免与用户滚动触发的加载冲突
           _lastInitialLoadTime = DateTime.now();
           Future.delayed(const Duration(milliseconds: 300), () {
@@ -324,7 +351,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
 
       final moreMessages = await appState.databaseService.getMessages(
         _selectedSession!.username,
-        limit: 50,
+        limit: _loadMoreBatch,
         offset: _currentOffset,
       );
 
@@ -352,7 +379,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           _messages = [...moreMessages.reversed.toList(), ..._messages];
           _isLoadingMoreMessages = false;
           _currentOffset += moreMessages.length;
-          _hasMoreMessages = moreMessages.length >= 50;
+          _hasMoreMessages = moreMessages.length >= _loadMoreBatch;
         });
 
         // 维持可视位置不跳动
@@ -380,6 +407,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           _isLoadingMoreMessages = false;
         });
       }
+    } finally {
+      _prefetchScheduled = false;
     }
   }
 

@@ -2,11 +2,11 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:file_picker/file_picker.dart';
 import '../models/message.dart';
 import '../models/chat_session.dart';
 import '../models/contact.dart';
+import '../models/contact_record.dart';
 import '../utils/path_utils.dart';
 import 'database_service.dart';
 
@@ -379,7 +379,7 @@ class ChatExportService {
 
     if (hasDetails) {
       buffer.writeln(
-        '        <button class="info-menu-btn" onclick="toggleInfoMenu()" title="查看详细信息">',
+        '        <button class="info-menu-btn" id="info-menu-btn" type="button" title="查看详细信息">',
       );
       buffer.writeln(
         '          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
@@ -600,21 +600,35 @@ class ChatExportService {
     buffer.writeln('    // 详细信息菜单控制');
     buffer.writeln('    function toggleInfoMenu() {');
     buffer.writeln('      const menu = document.getElementById("info-menu");');
+    buffer.writeln('      if (!menu) return;');
     buffer.writeln('      menu.classList.toggle("show");');
+    buffer.writeln('    }');
+    buffer.writeln('    ');
+    buffer.writeln('    function hideInfoMenu() {');
+    buffer.writeln('      const menu = document.getElementById("info-menu");');
+    buffer.writeln('      if (menu) {');
+    buffer.writeln('        menu.classList.remove("show");');
+    buffer.writeln('      }');
     buffer.writeln('    }');
     buffer.writeln('    ');
     buffer.writeln('    // 点击外部关闭菜单');
     buffer.writeln('    document.addEventListener("click", (e) => {');
     buffer.writeln('      const menu = document.getElementById("info-menu");');
-    buffer.writeln(
-      '      const btn = document.querySelector(".info-menu-btn");',
-    );
+    buffer.writeln('      const btn = document.getElementById("info-menu-btn");');
     buffer.writeln(
       '      if (menu && btn && !menu.contains(e.target) && !btn.contains(e.target)) {',
     );
     buffer.writeln('        menu.classList.remove("show");');
     buffer.writeln('      }');
     buffer.writeln('    });');
+    buffer.writeln('    ');
+    buffer.writeln('    const infoMenuBtn = document.getElementById("info-menu-btn");');
+    buffer.writeln('    if (infoMenuBtn) {');
+    buffer.writeln('      infoMenuBtn.addEventListener("click", (event) => {');
+    buffer.writeln('        event.stopPropagation();');
+    buffer.writeln('        toggleInfoMenu();');
+    buffer.writeln('      });');
+    buffer.writeln('    }');
     buffer.writeln('    ');
     buffer.writeln('    // 初始加载');
     buffer.writeln('    window.addEventListener("DOMContentLoaded", () => {');
@@ -645,12 +659,17 @@ class ChatExportService {
   Future<bool> exportContactsToExcel({
     String? directoryPath,
     String? filePath,
-    List<Contact>? contacts,
+    List<ContactRecord>? contacts,
+    bool includeStrangers = false,
+    bool includeChatroomParticipants = false,
   }) async {
     final Workbook workbook = Workbook();
     try {
       final contactList = contacts ??
-          await _databaseService.getAllContacts(includeStrangers: true);
+          await _databaseService.getAllContacts(
+            includeStrangers: includeStrangers,
+            includeChatroomParticipants: includeChatroomParticipants,
+          );
 
       if (contactList.isEmpty) {
         workbook.dispose();
@@ -672,11 +691,15 @@ class ChatExportService {
       sheet.getRangeByIndex(currentRow, 4).setText('备注');
       sheet.getRangeByIndex(currentRow, 5).setText('别名');
       sheet.getRangeByIndex(currentRow, 6).setText('联系人类型');
-      sheet.getRangeByIndex(currentRow, 7).setText('是否已删除');
+      sheet.getRangeByIndex(currentRow, 7).setText('识别结果');
+      sheet.getRangeByIndex(currentRow, 8).setText('是否好友');
+      sheet.getRangeByIndex(currentRow, 9).setText('数据来源');
+      sheet.getRangeByIndex(currentRow, 10).setText('是否已删除');
       currentRow++;
 
       for (int i = 0; i < contactList.length; i++) {
-        final contact = contactList[i];
+        final record = contactList[i];
+        final contact = record.contact;
         final nickname = contact.nickName.isNotEmpty
             ? contact.nickName
             : contact.displayName;
@@ -686,8 +709,11 @@ class ChatExportService {
         sheet.getRangeByIndex(currentRow, 4).setText(contact.remark);
         sheet.getRangeByIndex(currentRow, 5).setText(contact.alias);
         sheet.getRangeByIndex(currentRow, 6).setText(contact.typeDescription);
+        sheet.getRangeByIndex(currentRow, 7).setText(record.source.label);
+        sheet.getRangeByIndex(currentRow, 8).setText(record.friendLabel);
+        sheet.getRangeByIndex(currentRow, 9).setText(record.origin.label);
         sheet
-            .getRangeByIndex(currentRow, 7)
+            .getRangeByIndex(currentRow, 10)
             .setText(contact.isDeleted ? '是' : '否');
         currentRow++;
       }
@@ -698,7 +724,10 @@ class ChatExportService {
       sheet.getRangeByIndex(1, 4).columnWidth = 22;
       sheet.getRangeByIndex(1, 5).columnWidth = 18;
       sheet.getRangeByIndex(1, 6).columnWidth = 18;
-      sheet.getRangeByIndex(1, 7).columnWidth = 14;
+      sheet.getRangeByIndex(1, 7).columnWidth = 16;
+      sheet.getRangeByIndex(1, 8).columnWidth = 12;
+      sheet.getRangeByIndex(1, 9).columnWidth = 18;
+      sheet.getRangeByIndex(1, 10).columnWidth = 12;
 
       String? resolvedFilePath = filePath;
       if (resolvedFilePath == null) {

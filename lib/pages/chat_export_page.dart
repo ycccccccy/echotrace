@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/app_state.dart';
 import '../models/chat_session.dart';
+import '../models/contact_record.dart';
 import '../services/chat_export_service.dart';
 import '../widgets/common/shimmer_loading.dart';
 import '../utils/string_utils.dart';
@@ -86,16 +87,59 @@ class _ChatExportPageState extends State<ChatExportPage> {
     });
 
     try {
-      final exportService = ChatExportService(appState.databaseService);
+      final databaseService = appState.databaseService;
+      final allRecords = await databaseService.getAllContacts(
+        includeStrangers: true,
+        includeChatroomParticipants: true,
+      );
+
+      final friendRecords = allRecords
+          .where((record) => record.source == ContactRecognitionSource.friend)
+          .toList();
+      final groupOnlyRecords = allRecords
+          .where(
+            (record) =>
+                record.source == ContactRecognitionSource.chatroomParticipant,
+          )
+          .toList();
+      final strangerRecords = allRecords
+          .where((record) => record.source == ContactRecognitionSource.stranger)
+          .toList();
+
+      final exportService = ChatExportService(databaseService);
       final success = await exportService.exportContactsToExcel(
         directoryPath: _exportFolder,
+        contacts: friendRecords,
       );
 
       if (!mounted) return;
 
+      final summary = StringBuffer(
+        success ? '通讯录导出成功' : '没有可导出的联系人或导出被取消',
+      )
+        ..write('（好友 ')
+        ..write(friendRecords.length)
+        ..write(' 人');
+
+      if (groupOnlyRecords.isNotEmpty) {
+        summary
+          ..write('，群聊成员未导出 ')
+          ..write(groupOnlyRecords.length)
+          ..write(' 人');
+      }
+
+      if (strangerRecords.isNotEmpty) {
+        summary
+          ..write('，陌生人未导出 ')
+          ..write(strangerRecords.length)
+          ..write(' 人');
+      }
+
+      summary.write('）');
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(success ? '通讯录导出成功' : '没有可导出的联系人或导出被取消'),
+          content: Text(summary.toString()),
         ),
       );
     } catch (e) {

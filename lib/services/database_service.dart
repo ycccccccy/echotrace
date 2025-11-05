@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/message.dart';
 import '../models/contact.dart';
+import '../models/contact_record.dart';
 import '../models/chat_session.dart';
 import 'wechat_vfs_native.dart';
 import 'logger_service.dart';
@@ -311,11 +313,13 @@ class DatabaseService {
     }
   }
 
-  Future<List<Contact>> getAllContacts({
+  Future<List<ContactRecord>> getAllContacts({
     bool includeDeleted = false,
     bool includeStrangers = false,
+    bool includeChatroomParticipants = false,
+    bool includeOfficialAccounts = false,
   }) async {
-    final contactMap = <String, Contact>{};
+    final contactMap = <String, ContactRecord>{};
 
     try {
       final contactDbPath = await _findContactDatabase(
@@ -333,6 +337,13 @@ class DatabaseService {
       );
 
       try {
+        final hasTypeColumn =
+            await _hasTableColumn(contactDb, 'contact', 'type');
+        final chatroomMembers =
+            await _loadChatroomMemberUsernames(contactDb);
+        final knownStrangers =
+            await _loadKnownStrangerUsernames(contactDb);
+
         final whereClause = includeDeleted ? null : 'delete_flag = 0';
         final contactRows = await contactDb.query(
           'contact',
@@ -341,16 +352,68 @@ class DatabaseService {
 
         for (final row in contactRows) {
           final contact = Contact.fromMap(row);
-          if (_shouldSkipContact(contact.username)) continue;
-          contactMap[contact.username] = contact;
+          final lowerUsername = contact.username.toLowerCase();
+          final shouldSkip = _shouldSkipContact(contact.username);
+          final isOfficial = lowerUsername.startsWith('gh_');
+
+          if (shouldSkip && !(includeOfficialAccounts && isOfficial)) {
+            continue;
+          }
+
+          final source = _classifyContact(
+            contact,
+            chatroomMembers: chatroomMembers,
+            hasTypeColumn: hasTypeColumn,
+            knownStrangers: knownStrangers,
+          );
+
+          if (source == ContactRecognitionSource.system) {
+            continue;
+          }
+
+          if (!includeStrangers &&
+              source == ContactRecognitionSource.stranger) {
+            continue;
+          }
+
+          if (!includeOfficialAccounts &&
+              source == ContactRecognitionSource.officialAccount) {
+            continue;
+          }
+
+          if (!includeChatroomParticipants &&
+              source == ContactRecognitionSource.chatroomParticipant) {
+            continue;
+          }
+
+          contactMap[contact.username] = ContactRecord(
+            contact: contact,
+            source: source,
+            origin: ContactDataOrigin.contact,
+          );
         }
 
         if (includeStrangers) {
-          final strangerRows = await contactDb.query('stranger');
-          for (final row in strangerRows) {
-            final contact = Contact.fromMap(row);
-            if (_shouldSkipContact(contact.username)) continue;
-            contactMap.putIfAbsent(contact.username, () => contact);
+          try {
+            final strangerRows = await contactDb.query('stranger');
+            for (final row in strangerRows) {
+              final contact = Contact.fromMap(row);
+              if (_shouldSkipContact(contact.username)) continue;
+
+              contactMap.putIfAbsent(
+                contact.username,
+                () => ContactRecord(
+                  contact: contact,
+                  source: ContactRecognitionSource.stranger,
+                  origin: ContactDataOrigin.stranger,
+                ),
+              );
+            }
+          } catch (e) {
+            await logger.debug(
+              'DatabaseService',
+              '读取 stranger 表失败（导出包含陌生人）: $e',
+            );
           }
         }
       } finally {
@@ -359,9 +422,9 @@ class DatabaseService {
 
       final contacts = contactMap.values.toList()
         ..sort(
-          (a, b) => a.displayName.toLowerCase().compareTo(
-                b.displayName.toLowerCase(),
-              ),
+          (a, b) => a.contact.displayName
+              .toLowerCase()
+              .compareTo(b.contact.displayName.toLowerCase()),
         );
 
       return contacts;
@@ -1030,6 +1093,293 @@ class DatabaseService {
       needsClose: needsClose,
       schema: resolvedSchema,
     );
+  }
+
+  Future<bool> _hasTableColumn(
+    Database database,
+    String tableName,
+    String columnName,
+  ) async {
+    try {
+      final pragmaRows = await database.rawQuery(
+        "PRAGMA table_info('$tableName')",
+      );
+      for (final row in pragmaRows) {
+        final name = row['name'] as String?;
+        if (name != null && name.toLowerCase() == columnName.toLowerCase()) {
+          return true;
+        }
+      }
+    } catch (e) {
+      await logger.debug(
+        'DatabaseService',
+        '检查数据表列失败: $tableName.$columnName',
+      );
+    }
+    return false;
+  }
+
+  Future<Set<String>> _loadChatroomMemberUsernames(Database database) async {
+    final members = <String>{};
+
+    Future<void> collectFromColumn(String table, String column) async {
+      final safeTable = table.replaceAll('"', '""');
+      final safeColumn = column.replaceAll('"', '""');
+      try {
+        final rows = await database.rawQuery(
+          'SELECT DISTINCT "$safeColumn" AS value FROM "$safeTable" '
+          'WHERE "$safeColumn" IS NOT NULL AND TRIM("$safeColumn") != ?',
+          [''],
+        );
+        for (final row in rows) {
+          final value = row['value'];
+          for (final username in _extractChatroomMemberUsernames(value)) {
+            members.add(username);
+          }
+        }
+      } catch (e) {
+        await logger.debug(
+          'DatabaseService',
+          '读取 $table.$column 失败，可能不存在或结构不同: $e',
+        );
+      }
+    }
+
+    // 优先尝试常见的表结构
+    await collectFromColumn('chatroom_member', 'member_id');
+    await collectFromColumn('ChatRoomMembers', 'memberid');
+
+    try {
+      final tableRows = await database.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table'",
+      );
+      for (final row in tableRows) {
+        final tableName = row['name'] as String?;
+        if (tableName == null) continue;
+        final lowerTable = tableName.toLowerCase();
+        if (!lowerTable.contains('chatroom')) continue;
+        if (lowerTable.contains('fts')) continue; // 跳过全文索引等辅助表
+
+        final pragmaRows = await database.rawQuery(
+          "PRAGMA table_info('$tableName')",
+        );
+        final candidateColumns = <String>{};
+        for (final pragma in pragmaRows) {
+          final name = pragma['name'] as String?;
+          if (name == null) continue;
+          final lowerColumn = name.toLowerCase();
+          if (lowerColumn.contains('member')) {
+            candidateColumns.add(name);
+          }
+        }
+
+        for (final column in candidateColumns) {
+          await collectFromColumn(tableName, column);
+        }
+      }
+    } catch (e) {
+      await logger.debug(
+        'DatabaseService',
+        '扫描群聊成员表失败: $e',
+      );
+    }
+
+    return members;
+  }
+
+  Future<Set<String>> _loadKnownStrangerUsernames(Database database) async {
+    final strangers = <String>{};
+    try {
+      final rows = await database.query('stranger');
+      for (final row in rows) {
+        for (final candidate in [
+          row['username'],
+          row['encrypt_username'],
+          row['EncryptUsrName'],
+          row['encryptUserName'],
+        ]) {
+          final value = _decodeDynamicToString(candidate);
+          if (value == null) continue;
+          final username = value.trim();
+          if (username.isEmpty) continue;
+          strangers.add(username);
+          strangers.add(username.toLowerCase());
+        }
+      }
+    } catch (e) {
+      await logger.debug(
+        'DatabaseService',
+        '读取 stranger 表失败或不存在: $e',
+      );
+    }
+    return strangers;
+  }
+
+  Iterable<String> _extractChatroomMemberUsernames(dynamic rawValue) {
+    final result = <String>{};
+    final asString = _decodeDynamicToString(rawValue);
+    if (asString == null) {
+      return result;
+    }
+
+    final trimmed = asString.trim();
+    if (trimmed.isEmpty) {
+      return result;
+    }
+
+    bool parsedJson = false;
+    if ((trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+        (trimmed.startsWith('{') && trimmed.endsWith('}'))) {
+      try {
+        final dynamic decoded = jsonDecode(trimmed);
+        void walk(dynamic node) {
+          if (node is String) {
+            final normalized = _normalizeMemberCandidate(node);
+            if (normalized != null) {
+              result.add(normalized);
+            }
+          } else if (node is List) {
+            for (final item in node) {
+              walk(item);
+            }
+          } else if (node is Map) {
+            for (final value in node.values) {
+              walk(value);
+            }
+          }
+        }
+
+        walk(decoded);
+        parsedJson = true;
+      } catch (_) {
+        parsedJson = false;
+      }
+    }
+
+    if (!parsedJson) {
+      final normalized = trimmed.replaceAll(RegExp(r'[\[\]{}\"\n\r\t]'), ' ');
+      final tokens = normalized.split(RegExp(r'[;|,\s]+'));
+      for (final token in tokens) {
+        final normalizedToken = _normalizeMemberCandidate(token);
+        if (normalizedToken != null) {
+          result.add(normalizedToken);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  String? _decodeDynamicToString(dynamic value) {
+    if (value == null) return null;
+    if (value is String) return value;
+    if (value is Uint8List) {
+      try {
+        return utf8.decode(value, allowMalformed: true);
+      } catch (_) {
+        try {
+          return latin1.decode(value, allowMalformed: true);
+        } catch (_) {}
+      }
+    }
+    if (value is List<int>) {
+      try {
+        return utf8.decode(value, allowMalformed: true);
+      } catch (_) {
+        try {
+          return latin1.decode(value, allowMalformed: true);
+        } catch (_) {}
+      }
+    }
+    return value.toString();
+  }
+
+  String? _normalizeMemberCandidate(dynamic value) {
+    if (value == null) return null;
+    final asString = value.toString().trim();
+    if (asString.isEmpty) return null;
+    final cleaned = asString
+        .replaceAll(RegExp(r'^["\'']+'), '')
+        .replaceAll(RegExp(r'["\'']+$'), '')
+        .trim();
+    if (cleaned.isEmpty) return null;
+    if (!_isLikelyIndividualUsername(cleaned)) {
+      return null;
+    }
+    return cleaned;
+  }
+
+  bool _isLikelyIndividualUsername(String username) {
+    final lower = username.toLowerCase();
+    if (_shouldSkipContact(username)) return false;
+    if (lower.contains('@chatroom')) return false;
+    if (lower.startsWith('wxid_')) return true;
+    if (lower.startsWith('wx') && lower.length >= 6) return true;
+    final simplePattern =
+        RegExp(r'^[a-z0-9][a-z0-9_\-]{4,}$', caseSensitive: false);
+    return simplePattern.hasMatch(username);
+  }
+
+  ContactRecognitionSource _classifyContact(
+    Contact contact, {
+    required Set<String> chatroomMembers,
+    required bool hasTypeColumn,
+    required Set<String> knownStrangers,
+  }) {
+    final username = contact.username.toLowerCase();
+
+    if (knownStrangers.contains(contact.username) ||
+        knownStrangers.contains(username)) {
+      return ContactRecognitionSource.stranger;
+    }
+
+    if (contact.isGroup || username.contains('@chatroom')) {
+      return ContactRecognitionSource.chatroomParticipant;
+    }
+
+    final isOfficialCandidate = contact.isOfficialAccount ||
+        username.startsWith('gh_') ||
+        contact.verifyFlag != 0 ||
+        (hasTypeColumn && (contact.type & 0x4) != 0);
+
+    if (isOfficialCandidate) {
+      return ContactRecognitionSource.officialAccount;
+    }
+
+    bool hasFriendFlag = contact.hasFriendFlag;
+
+    if (!hasFriendFlag && hasTypeColumn) {
+      // 部分版本会将好友标记存放在更高位
+      const additionalFriendBits = [
+        0x2,
+        0x4,
+        0x2000,
+        0x4000,
+        0x8000,
+        0x20000,
+        0x40000,
+        0x80000,
+        0x100000,
+        0x200000,
+      ];
+      for (final bit in additionalFriendBits) {
+        if ((contact.type & bit) != 0) {
+          hasFriendFlag = true;
+          break;
+        }
+      }
+    }
+
+    if (hasFriendFlag) {
+      return ContactRecognitionSource.friend;
+    }
+
+    if (chatroomMembers.contains(contact.username) ||
+        contact.isInChatRoom == 1) {
+      return ContactRecognitionSource.chatroomParticipant;
+    }
+
+    return ContactRecognitionSource.stranger;
   }
 
   bool _shouldSkipContact(String username) {
