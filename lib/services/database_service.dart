@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/message.dart';
 import '../models/contact.dart';
+import '../models/contact_record.dart';
 import '../models/chat_session.dart';
 import 'wechat_vfs_native.dart';
 import 'logger_service.dart';
@@ -311,6 +312,112 @@ class DatabaseService {
     }
   }
 
+  Future<List<ContactRecord>> getAllContacts({
+    bool includeDeleted = false,
+    bool includeStrangers = false,
+    bool includeChatroomParticipants = false,
+    bool includeOfficialAccounts = false,
+  }) async {
+    final contactMap = <String, ContactRecord>{};
+
+    try {
+      final contactDbPath = await _findContactDatabase(
+        retryCount: 3,
+        retryDelayMs: 500,
+      );
+      if (contactDbPath == null) {
+        await logger.warning('DatabaseService', '未找到 contact 数据库，无法导出通讯录');
+        return [];
+      }
+
+      final contactDb = await _currentFactory.openDatabase(
+        contactDbPath,
+        options: OpenDatabaseOptions(readOnly: true, singleInstance: false),
+      );
+
+      try {
+        final hasTypeColumn =
+            await _hasTableColumn(contactDb, 'contact', 'type');
+        final chatroomMembers =
+            await _loadChatroomMemberUsernames(contactDb);
+
+        final whereClause = includeDeleted ? null : 'delete_flag = 0';
+        final contactRows = await contactDb.query(
+          'contact',
+          where: whereClause,
+        );
+
+        for (final row in contactRows) {
+          final contact = Contact.fromMap(row);
+          final lowerUsername = contact.username.toLowerCase();
+          final shouldSkip = _shouldSkipContact(contact.username);
+          final isOfficial = lowerUsername.startsWith('gh_');
+
+          if (shouldSkip && !(includeOfficialAccounts && isOfficial)) {
+            continue;
+          }
+
+          final source = _classifyContact(
+            contact,
+            chatroomMembers: chatroomMembers,
+            hasTypeColumn: hasTypeColumn,
+          );
+
+          if (source == ContactRecognitionSource.system) {
+            continue;
+          }
+
+          if (!includeOfficialAccounts &&
+              source == ContactRecognitionSource.officialAccount) {
+            continue;
+          }
+
+          if (!includeChatroomParticipants &&
+              source == ContactRecognitionSource.chatroomParticipant) {
+            continue;
+          }
+
+          contactMap[contact.username] = ContactRecord(
+            contact: contact,
+            source: source,
+            origin: ContactDataOrigin.contact,
+          );
+        }
+
+        if (includeStrangers) {
+          final strangerRows = await contactDb.query('stranger');
+          for (final row in strangerRows) {
+            final contact = Contact.fromMap(row);
+            if (_shouldSkipContact(contact.username)) continue;
+
+            contactMap.putIfAbsent(
+              contact.username,
+              () => ContactRecord(
+                contact: contact,
+                source: ContactRecognitionSource.stranger,
+                origin: ContactDataOrigin.stranger,
+              ),
+            );
+          }
+        }
+      } finally {
+        await contactDb.close();
+      }
+
+      final contacts = contactMap.values.toList()
+        ..sort(
+          (a, b) => a.contact.displayName
+              .toLowerCase()
+              .compareTo(b.contact.displayName.toLowerCase()),
+        );
+
+      return contacts;
+    } catch (e, stackTrace) {
+      await logger.error('DatabaseService', '获取通讯录失败', e, stackTrace);
+      return [];
+    }
+  }
+
   /// 获取消息列表（支持跨多个数据库合并，按时间正确排序）
   Future<List<Message>> getMessages(
     String sessionId, {
@@ -338,10 +445,9 @@ class DatabaseService {
 
       if (tableName != null) {
         dbInfos.add(
-          _DatabaseTableInfo(
-            database: dbForMsg,
-            tableName: tableName,
-            latestTimestamp: 0,
+          await _createDatabaseTableInfo(
+            dbForMsg,
+            tableName,
             needsClose: false,
           ),
         );
@@ -375,10 +481,9 @@ class DatabaseService {
             );
             if (foundTableName != null) {
               dbInfos.add(
-                _DatabaseTableInfo(
-                  database: tempDb,
-                  tableName: foundTableName,
-                  latestTimestamp: 0,
+                await _createDatabaseTableInfo(
+                  tempDb,
+                  foundTableName,
                   needsClose: true,
                 ),
               );
@@ -409,23 +514,49 @@ class DatabaseService {
         // 第二步：从所有数据库收集消息的时间戳信息（轻量级查询）
         final List<_MessageTimeInfo> timeInfos = [];
 
+        int fetchCount = limit > 0 ? (offset + limit) : 0;
+        if (fetchCount <= 0) {
+          fetchCount = offset > 0 ? offset : 200;
+        }
+
         for (int i = 0; i < dbInfos.length; i++) {
           final dbInfo = dbInfos[i];
           await logger.info('DatabaseService', '从数据库$i收集时间戳信息');
 
           try {
-            final rows = await dbInfo.database.rawQuery('''
-              SELECT local_id, create_time 
-              FROM ${dbInfo.tableName} 
-              ORDER BY create_time DESC
-            ''');
+            final selectColumns = <String>['local_id'];
+            if (dbInfo.schema.hasCreateTime) {
+              selectColumns.add('create_time');
+            }
+            if (dbInfo.schema.hasSortSeq) {
+              selectColumns.add('sort_seq');
+            }
+
+            final queryBuffer = StringBuffer('SELECT ')
+              ..write(selectColumns.join(', '))
+              ..write(' FROM ${dbInfo.tableName}')
+              ..write(' ORDER BY ${dbInfo.schema.orderClauses().join(', ')}');
+            if (fetchCount > 0) {
+              queryBuffer.write(' LIMIT $fetchCount');
+            }
+
+            final rows = await dbInfo.database.rawQuery(queryBuffer.toString());
 
             for (final row in rows) {
+              final localId = row['local_id'] as int?;
+              if (localId == null) continue;
+              final createTime = dbInfo.schema.hasCreateTime
+                  ? (row['create_time'] as int? ?? 0)
+                  : 0;
+              final sortSeq = dbInfo.schema.hasSortSeq
+                  ? row['sort_seq'] as int?
+                  : null;
               timeInfos.add(
                 _MessageTimeInfo(
-                  localId: row['local_id'] as int,
-                  createTime: row['create_time'] as int,
+                  localId: localId,
+                  createTime: createTime,
                   dbIndex: i,
+                  sortSeq: sortSeq,
                 ),
               );
             }
@@ -445,7 +576,17 @@ class DatabaseService {
         }
 
         // 第三步：按时间排序所有时间戳（降序）
-        timeInfos.sort((a, b) => b.createTime.compareTo(a.createTime));
+        timeInfos.sort((a, b) {
+          final aPrimary = a.sortSeq ?? a.createTime;
+          final bPrimary = b.sortSeq ?? b.createTime;
+          if (bPrimary != aPrimary) {
+            return bPrimary.compareTo(aPrimary);
+          }
+          if (b.createTime != a.createTime) {
+            return b.createTime.compareTo(a.createTime);
+          }
+          return b.localId.compareTo(a.localId);
+        });
         await logger.info(
           'DatabaseService',
           '收集到 ${timeInfos.length} 条时间戳，已排序',
@@ -519,7 +660,15 @@ class DatabaseService {
         }
 
         // 第七步：按时间排序返回（确保顺序）
-        messages.sort((a, b) => b.createTime.compareTo(a.createTime));
+        messages.sort((a, b) {
+          if (b.sortSeq != a.sortSeq) {
+            return b.sortSeq.compareTo(a.sortSeq);
+          }
+          if (b.createTime != a.createTime) {
+            return b.createTime.compareTo(a.createTime);
+          }
+          return b.localId.compareTo(a.localId);
+        });
 
         await logger.info('DatabaseService', '成功加载 ${messages.length} 条消息');
         return messages;
@@ -659,10 +808,12 @@ class DatabaseService {
       await logger.error('DatabaseService', '调试查询失败', e);
     }
 
+    final schema = await _getMessageTableSchema(db, tableName);
+
     // 构建基本 SQL
     // 使用子查询找到当前用户wxid在Name2Id表中的rowid，然后与real_sender_id比较
     final buffer = StringBuffer('''
-      SELECT 
+      SELECT
       m.*,
       CASE WHEN m.real_sender_id = (
         SELECT rowid FROM Name2Id WHERE user_name = ?
@@ -696,7 +847,7 @@ class DatabaseService {
     }
 
     //拼接排序
-    buffer.write(' ORDER BY m.sort_seq DESC ');
+    buffer.write(' ORDER BY ${schema.orderClauses(alias: 'm').join(', ')}');
 
     // 分页
     if (limit > 0 || offset > 0) {
@@ -883,6 +1034,167 @@ class DatabaseService {
       await logger.error('DatabaseService', '查找消息表异常', e, stackTrace);
       return null;
     }
+  }
+
+  Future<_MessageTableSchema> _getMessageTableSchema(
+    Database db,
+    String tableName,
+  ) async {
+    try {
+      final pragmaRows = await db.rawQuery(
+        "PRAGMA table_info('$tableName')",
+      );
+      final columnNames = pragmaRows
+          .map((row) => (row['name'] as String?)?.toLowerCase() ?? '')
+          .toSet();
+      final hasSortSeq = columnNames.contains('sort_seq');
+      final hasCreateTime = columnNames.contains('create_time');
+      return _MessageTableSchema(
+        hasSortSeq: hasSortSeq,
+        hasCreateTime: hasCreateTime,
+      );
+    } catch (e) {
+      return const _MessageTableSchema(
+        hasSortSeq: false,
+        hasCreateTime: true,
+      );
+    }
+  }
+
+  Future<_DatabaseTableInfo> _createDatabaseTableInfo(
+    Database database,
+    String tableName, {
+    required bool needsClose,
+    int latestTimestamp = 0,
+    _MessageTableSchema? schema,
+  }) async {
+    final resolvedSchema =
+        schema ?? await _getMessageTableSchema(database, tableName);
+    return _DatabaseTableInfo(
+      database: database,
+      tableName: tableName,
+      latestTimestamp: latestTimestamp,
+      needsClose: needsClose,
+      schema: resolvedSchema,
+    );
+  }
+
+  Future<bool> _hasTableColumn(
+    Database database,
+    String tableName,
+    String columnName,
+  ) async {
+    try {
+      final pragmaRows = await database.rawQuery(
+        "PRAGMA table_info('$tableName')",
+      );
+      for (final row in pragmaRows) {
+        final name = row['name'] as String?;
+        if (name != null && name.toLowerCase() == columnName.toLowerCase()) {
+          return true;
+        }
+      }
+    } catch (e) {
+      await logger.debug(
+        'DatabaseService',
+        '检查数据表列失败: $tableName.$columnName',
+      );
+    }
+    return false;
+  }
+
+  Future<Set<String>> _loadChatroomMemberUsernames(Database database) async {
+    final members = <String>{};
+    try {
+      final rows = await database.query(
+        'chatroom_member',
+        columns: ['member_id'],
+        distinct: true,
+        where: 'member_id IS NOT NULL AND member_id != ""',
+      );
+      for (final row in rows) {
+        final username = row['member_id'] as String?;
+        if (username != null && username.isNotEmpty) {
+          members.add(username);
+        }
+      }
+    } catch (e) {
+      await logger.debug(
+        'DatabaseService',
+        '读取 chatroom_member 表失败，可能不存在: $e',
+      );
+    }
+    return members;
+  }
+
+  ContactRecognitionSource _classifyContact(
+    Contact contact, {
+    required Set<String> chatroomMembers,
+    required bool hasTypeColumn,
+  }) {
+    final username = contact.username.toLowerCase();
+
+    if (contact.isGroup || username.contains('@chatroom')) {
+      return ContactRecognitionSource.chatroomParticipant;
+    }
+
+    final isOfficialCandidate = contact.isOfficialAccount ||
+        username.startsWith('gh_') ||
+        contact.verifyFlag != 0 ||
+        (hasTypeColumn && (contact.type & 0x4) != 0);
+
+    if (isOfficialCandidate) {
+      return ContactRecognitionSource.officialAccount;
+    }
+
+    bool hasFriendFlag = contact.hasFriendFlag;
+
+    if (!hasFriendFlag && hasTypeColumn) {
+      // 部分版本会将好友标记存放在更高位
+      const additionalFriendBits = [0x20000, 0x40000, 0x80000];
+      for (final bit in additionalFriendBits) {
+        if ((contact.type & bit) != 0) {
+          hasFriendFlag = true;
+          break;
+        }
+      }
+    }
+
+    if (!hasFriendFlag) {
+      final isLikelyChatroomOnly = chatroomMembers.contains(contact.username) ||
+          contact.isInChatRoom == 1 ||
+          contact.chatRoomType != 0 ||
+          contact.chatroomFlag != 0;
+
+      if (!isLikelyChatroomOnly && contact.localType == 0) {
+        hasFriendFlag = true;
+      }
+    }
+
+    if (hasFriendFlag) {
+      return ContactRecognitionSource.friend;
+    }
+
+    if (chatroomMembers.contains(contact.username) ||
+        contact.isInChatRoom == 1) {
+      return ContactRecognitionSource.chatroomParticipant;
+    }
+
+    return ContactRecognitionSource.stranger;
+  }
+
+  bool _shouldSkipContact(String username) {
+    final lower = username.toLowerCase();
+    if (lower.contains('@chatroom')) return true;
+    if (lower.startsWith('gh_')) return true;
+    if (lower.startsWith('weixin')) return true;
+    if (lower.startsWith('qqmail')) return true;
+    if (lower.startsWith('fmessage')) return true;
+    if (lower.startsWith('medianote')) return true;
+    if (lower.startsWith('floatbottle')) return true;
+    if (lower.startsWith('lbsapp')) return true;
+    if (lower.contains('@openim')) return true;
+    return false;
   }
 
   /// 计算MD5哈希
@@ -1486,10 +1798,9 @@ class DatabaseService {
 
             if (tableName != null) {
               dbInfos.add(
-                _DatabaseTableInfo(
-                  database: dbInfo.database,
-                  tableName: tableName,
-                  latestTimestamp: 0,
+                await _createDatabaseTableInfo(
+                  dbInfo.database,
+                  tableName,
                   needsClose: false,
                 ),
               );
@@ -2981,24 +3292,33 @@ class DatabaseService {
         );
 
         if (tableName != null) {
+          final schema = await _getMessageTableSchema(
+            dbInfo.database,
+            tableName,
+          );
+
           int latestTimestamp = 0;
           if (includeLatestTimestamp) {
+            final column = schema.hasCreateTime
+                ? 'create_time'
+                : (schema.hasSortSeq ? 'sort_seq' : 'local_id');
             try {
               final timeResult = await dbInfo.database.rawQuery(
-                'SELECT MAX(create_time) as max_time FROM $tableName',
+                'SELECT MAX($column) as max_value FROM $tableName',
               );
-              latestTimestamp = (timeResult.first['max_time'] as int?) ?? 0;
+              latestTimestamp = (timeResult.first['max_value'] as int?) ?? 0;
             } catch (e) {
               // 忽略错误
             }
           }
 
           result.add(
-            _DatabaseTableInfo(
-              database: dbInfo.database,
-              tableName: tableName,
-              latestTimestamp: latestTimestamp,
+            await _createDatabaseTableInfo(
+              dbInfo.database,
+              tableName,
               needsClose: false,
+              latestTimestamp: latestTimestamp,
+              schema: schema,
             ),
           );
         }
@@ -3664,10 +3984,9 @@ class DatabaseService {
               );
               if (tableName != null) {
                 dbInfos.add(
-                  _DatabaseTableInfo(
-                    database: dbInfo.database,
-                    tableName: tableName,
-                    latestTimestamp: 0,
+                  await _createDatabaseTableInfo(
+                    dbInfo.database,
+                    tableName,
                     needsClose: false,
                   ),
                 );
@@ -3810,19 +4129,46 @@ class DatabaseService {
   }
 }
 
+/// 消息表结构信息
+class _MessageTableSchema {
+  final bool hasSortSeq;
+  final bool hasCreateTime;
+
+  const _MessageTableSchema({
+    required this.hasSortSeq,
+    required this.hasCreateTime,
+  });
+
+  List<String> orderClauses({String alias = ''}) {
+    final prefix = alias.isNotEmpty ? '$alias.' : '';
+    final clauses = <String>[];
+    if (hasSortSeq) {
+      clauses.add('${prefix}sort_seq DESC');
+    }
+    if (hasCreateTime) {
+      clauses.add('${prefix}create_time DESC');
+    }
+    clauses.add('${prefix}local_id DESC');
+    return clauses;
+  }
+}
+
 /// 数据库表信息（用于消息查询优先级排序）
 class _DatabaseTableInfo {
   final Database database;
   final String tableName;
   final int latestTimestamp;
   final bool needsClose;
+  final _MessageTableSchema schema;
 
   _DatabaseTableInfo({
     required this.database,
     required this.tableName,
     required this.latestTimestamp,
     required this.needsClose,
-  });
+    _MessageTableSchema? schema,
+  }) : schema =
+            schema ?? const _MessageTableSchema(hasSortSeq: false, hasCreateTime: true);
 }
 
 /// 消息时间信息（用于跨数据库排序）
@@ -3830,11 +4176,13 @@ class _MessageTimeInfo {
   final int localId;
   final int createTime;
   final int dbIndex;
+  final int? sortSeq;
 
   _MessageTimeInfo({
     required this.localId,
     required this.createTime,
     required this.dbIndex,
+    this.sortSeq,
   });
 }
 

@@ -41,39 +41,51 @@ class ImageDecryptService {
     final xorSize = _bytesToInt32(header.sublist(10, 14));
 
     // 对齐到AES块大小（16字节）
-    final alignedAesSize = aesSize + (16 - aesSize % 16);
+    final alignedAesSize = aesSize <= 0 ? 0 : ((aesSize + 15) ~/ 16) * 16;
+    if (alignedAesSize > data.length) {
+      throw Exception('文件格式异常：AES 数据长度超过文件实际长度');
+    }
 
     // 分离AES数据
     final aesData = data.sublist(0, alignedAesSize);
 
     // AES 解密并去除填充
-    final cipher = AESEngine();
-    final params = KeyParameter(aesKey);
-    cipher.init(false, params); // false = 解密模式
+    Uint8List unpaddedData = Uint8List(0);
+    if (aesData.isNotEmpty) {
+      final cipher = AESEngine();
+      final params = KeyParameter(aesKey);
+      cipher.init(false, params); // false = 解密模式
 
-    final decryptedData = Uint8List(aesData.length);
-    for (int offset = 0; offset < aesData.length; offset += 16) {
-      cipher.processBlock(aesData, offset, decryptedData, offset);
+      final decryptedData = Uint8List(aesData.length);
+      for (int offset = 0; offset < aesData.length; offset += 16) {
+        cipher.processBlock(aesData, offset, decryptedData, offset);
+      }
+
+      unpaddedData = _removePadding(decryptedData);
     }
 
-    // 去除PKCS7填充
-    final unpaddedData = _removePadding(decryptedData);
-
     // 处理XOR数据
+    final remainingData = data.sublist(alignedAesSize);
+    if (xorSize < 0 || xorSize > remainingData.length) {
+      throw Exception('文件格式异常：XOR 数据长度不合法');
+    }
+
     Uint8List rawData;
     Uint8List xoredData;
 
     if (xorSize > 0) {
-      // 有XOR数据时，重新计算raw_data（去掉末尾的xor数据）
-      rawData = data.sublist(alignedAesSize, data.length - xorSize);
-      final xorData = data.sublist(data.length - xorSize);
+      final rawLength = remainingData.length - xorSize;
+      if (rawLength < 0) {
+        throw Exception('文件格式异常：原始数据长度小于XOR长度');
+      }
+      rawData = remainingData.sublist(0, rawLength);
+      final xorData = remainingData.sublist(rawLength);
       xoredData = Uint8List(xorData.length);
       for (int i = 0; i < xorData.length; i++) {
         xoredData[i] = xorData[i] ^ xorKey;
       }
     } else {
-      // 无XOR数据时，直接使用剩余数据
-      rawData = data.sublist(alignedAesSize);
+      rawData = remainingData;
       xoredData = Uint8List(0);
     }
 
@@ -81,17 +93,18 @@ class ImageDecryptService {
     final result = Uint8List(
       unpaddedData.length + rawData.length + xoredData.length,
     );
-    result.setRange(0, unpaddedData.length, unpaddedData);
-    result.setRange(
-      unpaddedData.length,
-      unpaddedData.length + rawData.length,
-      rawData,
-    );
-    result.setRange(
-      unpaddedData.length + rawData.length,
-      result.length,
-      xoredData,
-    );
+    int writeOffset = 0;
+    if (unpaddedData.isNotEmpty) {
+      result.setRange(0, unpaddedData.length, unpaddedData);
+      writeOffset += unpaddedData.length;
+    }
+    if (rawData.isNotEmpty) {
+      result.setRange(writeOffset, writeOffset + rawData.length, rawData);
+      writeOffset += rawData.length;
+    }
+    if (xoredData.isNotEmpty) {
+      result.setRange(writeOffset, writeOffset + xoredData.length, xoredData);
+    }
 
     return result;
   }
@@ -188,7 +201,7 @@ class ImageDecryptService {
     }
 
     final paddingLength = data[data.length - 1];
-    if (paddingLength > 16 || paddingLength > data.length) {
+    if (paddingLength == 0 || paddingLength > 16 || paddingLength > data.length) {
       return data; // 无效填充，返回原数据
     }
 

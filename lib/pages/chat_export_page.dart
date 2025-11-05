@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/app_state.dart';
 import '../models/chat_session.dart';
+import '../models/contact_record.dart';
 import '../services/chat_export_service.dart';
 import '../widgets/common/shimmer_loading.dart';
 import '../utils/string_utils.dart';
@@ -27,6 +28,7 @@ class _ChatExportPageState extends State<ChatExportPage> {
   DateTimeRange? _selectedRange;
   String? _exportFolder;
   bool _useAllTime = false;
+  bool _isExportingContacts = false;
 
   @override
   void initState() {
@@ -66,6 +68,92 @@ class _ChatExportPageState extends State<ChatExportPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('已设置导出文件夹: $result')));
+    }
+  }
+
+  Future<void> _exportContacts() async {
+    final appState = context.read<AppState>();
+    if (!appState.databaseService.isConnected) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请先连接数据库后再导出通讯录')),
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      _isExportingContacts = true;
+    });
+
+    try {
+      final databaseService = appState.databaseService;
+      final allRecords = await databaseService.getAllContacts(
+        includeStrangers: true,
+        includeChatroomParticipants: true,
+      );
+
+      final friendRecords = allRecords
+          .where((record) => record.source == ContactRecognitionSource.friend)
+          .toList();
+      final groupOnlyRecords = allRecords
+          .where(
+            (record) =>
+                record.source == ContactRecognitionSource.chatroomParticipant,
+          )
+          .toList();
+      final strangerRecords = allRecords
+          .where((record) => record.source == ContactRecognitionSource.stranger)
+          .toList();
+
+      final exportService = ChatExportService(databaseService);
+      final success = await exportService.exportContactsToExcel(
+        directoryPath: _exportFolder,
+        contacts: friendRecords,
+      );
+
+      if (!mounted) return;
+
+      final summary = StringBuffer(
+        success ? '通讯录导出成功' : '没有可导出的联系人或导出被取消',
+      )
+        ..write('（好友 ')
+        ..write(friendRecords.length)
+        ..write(' 人');
+
+      if (groupOnlyRecords.isNotEmpty) {
+        summary
+          ..write('，群聊成员未导出 ')
+          ..write(groupOnlyRecords.length)
+          ..write(' 人');
+      }
+
+      if (strangerRecords.isNotEmpty) {
+        summary
+          ..write('，陌生人未导出 ')
+          ..write(strangerRecords.length)
+          ..write(' 人');
+      }
+
+      summary.write('）');
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(summary.toString()),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导出通讯录失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isExportingContacts = false;
+        });
+      }
     }
   }
 
@@ -547,6 +635,41 @@ class _ChatExportPageState extends State<ChatExportPage> {
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.all(16),
                       alignment: Alignment.centerLeft,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  Text(
+                    '通讯录导出',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '将当前账号的通讯录导出为 Excel 表格',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _isExportingContacts ? null : _exportContacts,
+                    icon: _isExportingContacts
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: const CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(Icons.contacts),
+                    label: Text(
+                      _isExportingContacts ? '正在导出通讯录...' : '导出通讯录 (Excel)',
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 24),
