@@ -2,10 +2,12 @@ import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:syncfusion_flutter_xlsio/xlsio.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:file_picker/file_picker.dart';
 import '../models/message.dart';
 import '../models/chat_session.dart';
+import '../models/contact.dart';
+import '../models/contact_record.dart';
+import '../utils/path_utils.dart';
 import 'database_service.dart';
 
 /// 聊天记录导出服务
@@ -105,6 +107,9 @@ class ChatExportService {
           : <String, String>{};
 
       final myWxid = _databaseService.currentAccountWxid ?? '';
+      final myContactInfo = myWxid.isNotEmpty
+          ? await _getContactInfo(myWxid)
+          : <String, String>{};
 
       final html = _generateHtml(
         session,
@@ -112,6 +117,7 @@ class ChatExportService {
         senderDisplayNames,
         myWxid,
         contactInfo,
+        myContactInfo,
       );
 
       if (filePath == null) {
@@ -179,10 +185,10 @@ class ChatExportService {
       // 设置表头
       sheet.getRangeByIndex(currentRow, 1).setText('序号');
       sheet.getRangeByIndex(currentRow, 2).setText('时间');
-      sheet.getRangeByIndex(currentRow, 3).setText('发送者');
+      sheet.getRangeByIndex(currentRow, 3).setText('发送者昵称');
       sheet.getRangeByIndex(currentRow, 4).setText('发送者微信ID');
-      sheet.getRangeByIndex(currentRow, 5).setText('发送者昵称');
-      sheet.getRangeByIndex(currentRow, 6).setText('发送者备注');
+      sheet.getRangeByIndex(currentRow, 5).setText('发送者备注');
+      sheet.getRangeByIndex(currentRow, 6).setText('发送者身份');
       sheet.getRangeByIndex(currentRow, 7).setText('消息类型');
       sheet.getRangeByIndex(currentRow, 8).setText('内容');
       currentRow++;
@@ -217,35 +223,40 @@ class ChatExportService {
         final msg = messages[i];
 
         // 确定发送者信息
-        String senderDisplayName;
+        String senderRole;
         String senderWxid;
         String senderNickname;
         String senderRemark;
 
         if (msg.isSend == 1) {
-          senderDisplayName = '我';
+          senderRole = '我';
           senderWxid = currentAccountWxid;
-          senderNickname = currentAccountInfo['nickname'] ?? '';
+          senderNickname =
+              _resolvePreferredName(currentAccountInfo, fallback: '我');
           senderRemark = currentAccountInfo['remark'] ?? '';
         } else if (session.isGroup && msg.senderUsername != null) {
-          senderDisplayName = senderDisplayNames[msg.senderUsername] ?? '群成员';
+          senderRole = senderDisplayNames[msg.senderUsername] ?? '群成员';
           senderWxid = msg.senderUsername ?? '';
           final info = senderContactInfos[msg.senderUsername] ?? {};
-          senderNickname = info['nickname'] ?? '';
+          senderNickname = _resolvePreferredName(
+            info,
+            fallback: senderRole,
+          );
           senderRemark = info['remark'] ?? '';
         } else {
-          senderDisplayName = session.displayName ?? session.username;
+          senderRole = session.displayName ?? session.username;
           senderWxid = session.username;
-          senderNickname = contactInfo['nickname'] ?? '';
+          senderNickname =
+              _resolvePreferredName(contactInfo, fallback: senderRole);
           senderRemark = contactInfo['remark'] ?? '';
         }
 
         sheet.getRangeByIndex(currentRow, 1).setNumber(i + 1);
         sheet.getRangeByIndex(currentRow, 2).setText(msg.formattedCreateTime);
-        sheet.getRangeByIndex(currentRow, 3).setText(senderDisplayName);
+        sheet.getRangeByIndex(currentRow, 3).setText(senderNickname);
         sheet.getRangeByIndex(currentRow, 4).setText(senderWxid);
-        sheet.getRangeByIndex(currentRow, 5).setText(senderNickname);
-        sheet.getRangeByIndex(currentRow, 6).setText(senderRemark);
+        sheet.getRangeByIndex(currentRow, 5).setText(senderRemark);
+        sheet.getRangeByIndex(currentRow, 6).setText(senderRole);
         sheet.getRangeByIndex(currentRow, 7).setText(msg.typeDescription);
         sheet.getRangeByIndex(currentRow, 8).setText(msg.displayContent);
         currentRow++;
@@ -254,10 +265,10 @@ class ChatExportService {
       // 自动调整列宽（Syncfusion 使用 1-based 索引）
       sheet.getRangeByIndex(1, 1).columnWidth = 8; // 序号
       sheet.getRangeByIndex(1, 2).columnWidth = 20; // 时间
-      sheet.getRangeByIndex(1, 3).columnWidth = 15; // 发送者
+      sheet.getRangeByIndex(1, 3).columnWidth = 20; // 发送者昵称
       sheet.getRangeByIndex(1, 4).columnWidth = 25; // 发送者微信ID
-      sheet.getRangeByIndex(1, 5).columnWidth = 15; // 发送者昵称
-      sheet.getRangeByIndex(1, 6).columnWidth = 15; // 发送者备注
+      sheet.getRangeByIndex(1, 5).columnWidth = 20; // 发送者备注
+      sheet.getRangeByIndex(1, 6).columnWidth = 18; // 发送者身份
       sheet.getRangeByIndex(1, 7).columnWidth = 12; // 消息类型
       sheet.getRangeByIndex(1, 8).columnWidth = 50; // 内容
 
@@ -300,6 +311,7 @@ class ChatExportService {
     Map<String, String> senderDisplayNames,
     String myWxid,
     Map<String, String> contactInfo,
+    Map<String, String> myContactInfo,
   ) {
     final buffer = StringBuffer();
 
@@ -314,7 +326,15 @@ class ChatExportService {
       if (!isSend && session.isGroup && msg.senderUsername != null) {
         senderName = senderDisplayNames[msg.senderUsername] ?? '群成员';
       } else if (!isSend) {
-        senderName = session.displayName ?? session.username;
+        senderName = _resolvePreferredName(
+          contactInfo,
+          fallback: session.displayName ?? session.username,
+        );
+      } else {
+        senderName = _resolvePreferredName(
+          myContactInfo,
+          fallback: '我',
+        );
       }
 
       return {
@@ -359,7 +379,7 @@ class ChatExportService {
 
     if (hasDetails) {
       buffer.writeln(
-        '        <button class="info-menu-btn" onclick="toggleInfoMenu()" title="查看详细信息">',
+        '        <button class="info-menu-btn" id="info-menu-btn" type="button" title="查看详细信息">',
       );
       buffer.writeln(
         '          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
@@ -580,21 +600,35 @@ class ChatExportService {
     buffer.writeln('    // 详细信息菜单控制');
     buffer.writeln('    function toggleInfoMenu() {');
     buffer.writeln('      const menu = document.getElementById("info-menu");');
+    buffer.writeln('      if (!menu) return;');
     buffer.writeln('      menu.classList.toggle("show");');
+    buffer.writeln('    }');
+    buffer.writeln('    ');
+    buffer.writeln('    function hideInfoMenu() {');
+    buffer.writeln('      const menu = document.getElementById("info-menu");');
+    buffer.writeln('      if (menu) {');
+    buffer.writeln('        menu.classList.remove("show");');
+    buffer.writeln('      }');
     buffer.writeln('    }');
     buffer.writeln('    ');
     buffer.writeln('    // 点击外部关闭菜单');
     buffer.writeln('    document.addEventListener("click", (e) => {');
     buffer.writeln('      const menu = document.getElementById("info-menu");');
-    buffer.writeln(
-      '      const btn = document.querySelector(".info-menu-btn");',
-    );
+    buffer.writeln('      const btn = document.getElementById("info-menu-btn");');
     buffer.writeln(
       '      if (menu && btn && !menu.contains(e.target) && !btn.contains(e.target)) {',
     );
     buffer.writeln('        menu.classList.remove("show");');
     buffer.writeln('      }');
     buffer.writeln('    });');
+    buffer.writeln('    ');
+    buffer.writeln('    const infoMenuBtn = document.getElementById("info-menu-btn");');
+    buffer.writeln('    if (infoMenuBtn) {');
+    buffer.writeln('      infoMenuBtn.addEventListener("click", (event) => {');
+    buffer.writeln('        event.stopPropagation();');
+    buffer.writeln('        toggleInfoMenu();');
+    buffer.writeln('      });');
+    buffer.writeln('    }');
     buffer.writeln('    ');
     buffer.writeln('    // 初始加载');
     buffer.writeln('    window.addEventListener("DOMContentLoaded", () => {');
@@ -605,6 +639,131 @@ class ChatExportService {
     buffer.writeln('</html>');
 
     return buffer.toString();
+  }
+
+  String _resolvePreferredName(
+    Map<String, String> info, {
+    required String fallback,
+  }) {
+    final nickname = info['nickname'];
+    if (nickname != null && nickname.trim().isNotEmpty) {
+      return nickname.trim();
+    }
+    final remark = info['remark'];
+    if (remark != null && remark.trim().isNotEmpty) {
+      return remark.trim();
+    }
+    return fallback;
+  }
+
+  Future<bool> exportContactsToExcel({
+    String? directoryPath,
+    String? filePath,
+    List<ContactRecord>? contacts,
+    bool includeStrangers = false,
+    bool includeChatroomParticipants = false,
+  }) async {
+    final Workbook workbook = Workbook();
+    try {
+      final contactList = contacts ??
+          await _databaseService.getAllContacts(
+            includeStrangers: includeStrangers,
+            includeChatroomParticipants: includeChatroomParticipants,
+          );
+
+      if (contactList.isEmpty) {
+        workbook.dispose();
+        return false;
+      }
+
+      Worksheet sheet;
+      if (workbook.worksheets.count > 0) {
+        sheet = workbook.worksheets[0];
+        sheet.name = '通讯录';
+      } else {
+        sheet = workbook.worksheets.addWithName('通讯录');
+      }
+
+      int currentRow = 1;
+      sheet.getRangeByIndex(currentRow, 1).setText('序号');
+      sheet.getRangeByIndex(currentRow, 2).setText('昵称');
+      sheet.getRangeByIndex(currentRow, 3).setText('微信ID');
+      sheet.getRangeByIndex(currentRow, 4).setText('备注');
+      sheet.getRangeByIndex(currentRow, 5).setText('别名');
+      sheet.getRangeByIndex(currentRow, 6).setText('联系人类型');
+      sheet.getRangeByIndex(currentRow, 7).setText('识别结果');
+      sheet.getRangeByIndex(currentRow, 8).setText('是否好友');
+      sheet.getRangeByIndex(currentRow, 9).setText('数据来源');
+      sheet.getRangeByIndex(currentRow, 10).setText('是否已删除');
+      currentRow++;
+
+      for (int i = 0; i < contactList.length; i++) {
+        final record = contactList[i];
+        final contact = record.contact;
+        final nickname = contact.nickName.isNotEmpty
+            ? contact.nickName
+            : contact.displayName;
+        sheet.getRangeByIndex(currentRow, 1).setNumber(i + 1);
+        sheet.getRangeByIndex(currentRow, 2).setText(nickname);
+        sheet.getRangeByIndex(currentRow, 3).setText(contact.username);
+        sheet.getRangeByIndex(currentRow, 4).setText(contact.remark);
+        sheet.getRangeByIndex(currentRow, 5).setText(contact.alias);
+        sheet.getRangeByIndex(currentRow, 6).setText(contact.typeDescription);
+        sheet.getRangeByIndex(currentRow, 7).setText(record.source.label);
+        sheet.getRangeByIndex(currentRow, 8).setText(record.friendLabel);
+        sheet.getRangeByIndex(currentRow, 9).setText(record.origin.label);
+        sheet
+            .getRangeByIndex(currentRow, 10)
+            .setText(contact.isDeleted ? '是' : '否');
+        currentRow++;
+      }
+
+      sheet.getRangeByIndex(1, 1).columnWidth = 8;
+      sheet.getRangeByIndex(1, 2).columnWidth = 22;
+      sheet.getRangeByIndex(1, 3).columnWidth = 26;
+      sheet.getRangeByIndex(1, 4).columnWidth = 22;
+      sheet.getRangeByIndex(1, 5).columnWidth = 18;
+      sheet.getRangeByIndex(1, 6).columnWidth = 18;
+      sheet.getRangeByIndex(1, 7).columnWidth = 16;
+      sheet.getRangeByIndex(1, 8).columnWidth = 12;
+      sheet.getRangeByIndex(1, 9).columnWidth = 18;
+      sheet.getRangeByIndex(1, 10).columnWidth = 12;
+
+      String? resolvedFilePath = filePath;
+      if (resolvedFilePath == null) {
+        if (directoryPath != null && directoryPath.isNotEmpty) {
+          final fileName =
+              '通讯录_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+          resolvedFilePath = PathUtils.join(directoryPath, fileName);
+        } else {
+          final suggestedName =
+              '通讯录_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+          final outputFile = await FilePicker.platform.saveFile(
+            dialogTitle: '保存通讯录',
+            fileName: suggestedName,
+          );
+          if (outputFile == null) {
+            workbook.dispose();
+            return false;
+          }
+          resolvedFilePath = outputFile;
+        }
+      }
+
+      final List<int> bytes = workbook.saveAsStream();
+      workbook.dispose();
+
+      final file = File(resolvedFilePath);
+      final parentDir = file.parent;
+      if (!await parentDir.exists()) {
+        await parentDir.create(recursive: true);
+      }
+      await file.writeAsBytes(Uint8List.fromList(bytes));
+      return true;
+    } catch (e) {
+      workbook.dispose();
+      return false;
+    }
   }
 
   /// 获取 HTML 样式
