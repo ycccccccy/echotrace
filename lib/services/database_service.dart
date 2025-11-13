@@ -2377,7 +2377,7 @@ class DatabaseService {
     return resolved;
   }
 
-  /// 批量获取联系人显示名称（remark > nick_name > username）
+  /// 批量获取联系人显示名称（remark > nick_name > alias > username）
   Future<Map<String, String>> getDisplayNames(List<String> usernames) async {
     if (_sessionDb == null || usernames.isEmpty) {
       return {};
@@ -2448,11 +2448,12 @@ class DatabaseService {
             final remark = row['remark'] as String?;
             final alias = row['alias'] as String?;
             final nickName = row['nick_name'] as String?;
+            // 显示名优先级：remark > nick_name > alias > username
             final displayName = remark?.isNotEmpty == true
                 ? remark!
-                : (alias?.isNotEmpty == true
-                    ? alias!
-                    : (nickName?.isNotEmpty == true ? nickName! : username));
+                : (nickName?.isNotEmpty == true
+                    ? nickName!
+                    : (alias?.isNotEmpty == true ? alias! : username));
             assignDisplayName(username, displayName);
           }
         }
@@ -2556,6 +2557,110 @@ class DatabaseService {
         } catch (e) {
           // 忽略关闭错误
         }
+      }
+    } catch (e) {
+      return {};
+    }
+  }
+
+  /// 批量获取联系人头像URL（优先 big_head_url，其次 small_head_url）
+  Future<Map<String, String>> getAvatarUrls(List<String> usernames) async {
+    if (_sessionDb == null || usernames.isEmpty) {
+      return {};
+    }
+
+    try {
+      final contactDbPath = await getContactDatabasePath();
+      if (contactDbPath == null) {
+        await logger.warning('DatabaseService', '未找到contact数据库，无法获取头像');
+        return {};
+      }
+
+      final contactDb = await _currentFactory.openDatabase(
+        contactDbPath,
+        options: OpenDatabaseOptions(readOnly: true, singleInstance: false),
+      );
+
+      try {
+        final result = <String, String>{};
+
+        Future<void> queryTableForAvatars(
+          String table,
+          List<String> targets,
+        ) async {
+          if (targets.isEmpty) return;
+          final placeholders = List.filled(targets.length, '?').join(',');
+          final rows = await contactDb.rawQuery(
+            '''
+            SELECT username,
+                   CASE 
+                     WHEN big_head_url IS NOT NULL AND TRIM(big_head_url) != '' THEN big_head_url
+                     WHEN small_head_url IS NOT NULL AND TRIM(small_head_url) != '' THEN small_head_url
+                     ELSE ''
+                   END AS avatar_url
+            FROM $table
+            WHERE username IN ($placeholders)
+          ''',
+            targets,
+          );
+          for (final row in rows) {
+            final username = row['username'] as String?;
+            final url = row['avatar_url'] as String?;
+            if (username != null && (url != null && url.isNotEmpty)) {
+              result[username] = url;
+            }
+          }
+        }
+
+        // 先从 contact 表查
+        await queryTableForAvatars('contact', usernames);
+
+        // 对未命中的再从 stranger 表查
+        final notFound = usernames.where((u) => !result.containsKey(u)).toList();
+        if (notFound.isNotEmpty) {
+          try {
+            await queryTableForAvatars('stranger', notFound);
+          } catch (e) {
+            // 忽略 stranger 表结构差异
+          }
+        }
+
+        // 对于群聊ID存在变体的情况（可能用户名包含额外后缀），尝试模糊匹配
+        final stillMissing = usernames
+            .where((u) => !result.containsKey(u) && u.contains('@chatroom'))
+            .toList();
+        for (final u in stillMissing) {
+          try {
+            final id = u.split('@').first;
+            final rows = await contactDb.rawQuery(
+              '''
+              SELECT CASE 
+                       WHEN big_head_url IS NOT NULL AND TRIM(big_head_url) != '' THEN big_head_url
+                       WHEN small_head_url IS NOT NULL AND TRIM(small_head_url) != '' THEN small_head_url
+                       ELSE ''
+                     END AS avatar_url
+              FROM contact
+              WHERE username LIKE ?
+              LIMIT 1
+            ''',
+              ['%$id%'],
+            );
+            if (rows.isNotEmpty) {
+              final url = rows.first['avatar_url'] as String?;
+              if (url != null && url.isNotEmpty) {
+                result[u] = url;
+              }
+            }
+          } catch (e) {
+            // 忽略单个错误
+          }
+        }
+
+        return result;
+      } finally {
+        try {
+          await contactDb.close();
+        } catch (_) {}
       }
     } catch (e) {
       return {};

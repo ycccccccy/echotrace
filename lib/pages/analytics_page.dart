@@ -23,6 +23,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
   ChatStatistics? _overallStats;
   List<ContactRanking>? _contactRankings;
   List<ContactRanking>? _allContactRankings; // 保存所有排名
+  Map<String, String> _avatarUrls = {}; // 排名联系人头像
 
   // 加载进度状态
   String _loadingStatus = '';
@@ -264,6 +265,12 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     final displayNames = await widget.databaseService.getDisplayNames(
       privateSessions.map((s) => s.username).toList(),
     );
+    // 预取头像
+    try {
+      _avatarUrls = await widget.databaseService.getAvatarUrls(
+        privateSessions.map((s) => s.username).toList(),
+      );
+    } catch (_) {}
     await logger.debug('AnalyticsPage', '获取到 ${displayNames.length} 个联系人显示名');
 
     int skippedCount = 0;
@@ -822,9 +829,13 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                     final index = entry.key;
                     final ranking = entry.value;
 
+                    final avatarUrl = _avatarUrls[ranking.username];
                     return ListTile(
                       key: ValueKey('${ranking.username}_$index'),
-                      leading: CircleAvatar(child: Text('${index + 1}')),
+                      leading: _AvatarWithRank(
+                        avatarUrl: avatarUrl,
+                        rank: index + 1,
+                      ),
                       title: Text(ranking.displayName),
                       subtitle: Text(
                         '发送: ${ranking.sentCount} | 接收: ${ranking.receivedCount}',
@@ -862,5 +873,48 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
 
   String _formatDateTime(DateTime dateTime) {
     return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
+  }
+}
+
+class _AvatarWithRank extends StatelessWidget {
+  final String? avatarUrl;
+  final int rank;
+
+  const _AvatarWithRank({required this.avatarUrl, required this.rank});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasAvatar = avatarUrl != null && avatarUrl!.isNotEmpty;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        CircleAvatar(
+          radius: 18,
+          backgroundImage: hasAvatar ? NetworkImage(avatarUrl!) : null,
+          child: !hasAvatar
+              ? Text(
+                  rank.toString(),
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                )
+              : null,
+        ),
+        Positioned(
+          bottom: -2,
+          right: -2,
+          child: CircleAvatar(
+            radius: 9,
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            child: Text(
+              '$rank',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

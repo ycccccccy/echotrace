@@ -9,12 +9,14 @@ class ChatSessionItem extends StatelessWidget {
   final ChatSession session;
   final bool isSelected;
   final VoidCallback onTap;
+  final String? avatarUrl;
 
   const ChatSessionItem({
     super.key,
     required this.session,
     required this.isSelected,
     required this.onTap,
+    this.avatarUrl,
   });
 
   /// 安全获取头像文本
@@ -276,16 +278,19 @@ class ChatSessionItem extends StatelessWidget {
                 // 头像
                 CircleAvatar(
                   radius: 24,
-                  backgroundColor: Theme.of(
-                    context,
-                  ).colorScheme.primary.withValues(alpha: 0.2),
-                  child: Text(
-                    _cleanString(_getAvatarText(context, session)),
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                  backgroundImage: (avatarUrl != null && avatarUrl!.isNotEmpty)
+                      ? NetworkImage(avatarUrl!)
+                      : null,
+                  child: (avatarUrl == null || avatarUrl!.isEmpty)
+                      ? Text(
+                          _cleanString(_getAvatarText(context, session)),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                      : null,
                 ),
                 const SizedBox(width: 12),
 

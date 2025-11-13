@@ -13,6 +13,7 @@ class MessageBubble extends StatefulWidget {
   final String? senderDisplayName;
   final String sessionUsername;
   final bool shouldShowTime;
+  final String? avatarUrl;
 
   const MessageBubble({
     super.key,
@@ -21,6 +22,7 @@ class MessageBubble extends StatefulWidget {
     this.senderDisplayName,
     required this.sessionUsername,
     this.shouldShowTime = false,
+    this.avatarUrl,
   });
 
   @override
@@ -233,11 +235,16 @@ class _MessageBubbleState extends State<MessageBubble> {
       CircleAvatar(
         radius: 18,
         backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
-        child: Icon(
-          Icons.person,
-          size: 20,
-          color: Theme.of(context).colorScheme.primary,
-        ),
+        backgroundImage: (widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty)
+            ? NetworkImage(widget.avatarUrl!)
+            : null,
+        child: (widget.avatarUrl == null || widget.avatarUrl!.isEmpty)
+            ? Icon(
+                Icons.person,
+                size: 20,
+                color: Theme.of(context).colorScheme.primary,
+              )
+            : null,
       ),
     ];
   }
@@ -247,14 +254,17 @@ class _MessageBubbleState extends State<MessageBubble> {
       // 头像
       CircleAvatar(
         radius: 18,
-        backgroundColor: Theme.of(
-          context,
-        ).colorScheme.secondary.withValues(alpha: 0.2),
-        child: Icon(
-          Icons.person,
-          size: 20,
-          color: Theme.of(context).colorScheme.secondary,
-        ),
+        backgroundColor: Theme.of(context).colorScheme.secondary.withValues(alpha: 0.2),
+        backgroundImage: (widget.avatarUrl != null && widget.avatarUrl!.isNotEmpty)
+            ? NetworkImage(widget.avatarUrl!)
+            : null,
+        child: (widget.avatarUrl == null || widget.avatarUrl!.isEmpty)
+            ? Icon(
+                Icons.person,
+                size: 20,
+                color: Theme.of(context).colorScheme.secondary,
+              )
+            : null,
       ),
       const SizedBox(width: 8),
       // 消息气泡
@@ -314,13 +324,16 @@ class _MessageBubbleState extends State<MessageBubble> {
 
   /// 获取消息气泡颜色
   Color _getMessageBubbleColor(BuildContext context) {
+    // 系统消息单独弱化显示
     if (widget.message.isSystemMessage) {
       return Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
-    } else if (widget.message.isTextMessage) {
-      return Theme.of(context).colorScheme.surfaceContainerHighest;
-    } else {
-      return Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3);
     }
+    // 对方的所有消息（包含特殊类型）统一使用与文本一致的浅色背景
+    if (!widget.isFromMe) {
+      return Theme.of(context).colorScheme.surfaceContainerHighest;
+    }
+    // 自己的消息颜色由 _buildFromMeLayout 固定为主色，这里仅用于他人消息
+    return Theme.of(context).colorScheme.surfaceContainerHighest;
   }
 
   /// 获取消息文本颜色

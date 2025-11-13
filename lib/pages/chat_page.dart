@@ -29,6 +29,11 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
   List<ChatSession> _sessions = [];
   List<ChatSession> _filteredSessions = []; // 搜索过滤后的会话列表
   List<Message> _messages = [];
+  // 会话头像缓存（username -> avatarUrl）
+  Map<String, String> _sessionAvatarUrls = {};
+  // 群聊成员头像缓存（username -> avatarUrl）
+  Map<String, String> _senderAvatarUrls = {};
+  String? _myAvatarUrl; // 我的头像
   bool _isLoadingSessions = false;
   bool _isLoadingMessages = false;
   bool _isLoadingMoreMessages = false;
@@ -66,6 +71,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     _searchController.addListener(_onSearchChanged);
     _loadSessions();
     _scrollController.addListener(_onScroll);
+    _loadMyAvatar();
   }
 
   @override
@@ -98,6 +104,19 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         logger.debug('ChatPage', '搜索结果: 找到 ${_filteredSessions.length} 个匹配的会话');
       }
     });
+  }
+
+  Future<void> _loadMyAvatar() async {
+    try {
+      final appState = context.read<AppState>();
+      final myWxid = appState.databaseService.currentAccountWxid;
+      if (myWxid == null || myWxid.isEmpty) return;
+      final map = await appState.databaseService.getAvatarUrls([myWxid]);
+      if (!mounted) return;
+      setState(() {
+        _myAvatarUrl = map[myWxid];
+      });
+    } catch (_) {}
   }
 
   void _toggleSearch() async {
@@ -197,6 +216,23 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
         _refreshController.stop();
         _refreshController.reset();
       }
+
+      // 确保我的头像已加载（数据库连接后再尝试一次）
+      if (_myAvatarUrl == null || _myAvatarUrl!.isEmpty) {
+        await _loadMyAvatar();
+      }
+
+      // 异步加载头像（不阻塞会话渲染）
+      try {
+        final avatarMap = await appState.databaseService.getAvatarUrls(
+          filteredSessions.map((s) => s.username).toList(),
+        );
+        if (mounted) {
+          setState(() {
+            _sessionAvatarUrls = avatarMap;
+          });
+        }
+      } catch (_) {}
     } catch (e, stackTrace) {
       await logger.error('ChatPage', '加载会话列表失败', e, stackTrace);
       if (mounted) {
@@ -236,6 +272,10 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     // 异步加载消息 - 初次只加载少量消息以提升性能
     try {
       final appState = context.read<AppState>();
+      // 若我的头像尚未就绪，尝试补载
+      if (_myAvatarUrl == null || _myAvatarUrl!.isEmpty) {
+        await _loadMyAvatar();
+      }
       await logger.info(
         'ChatPage',
         '查询消息，limit=$_initialMessageBatch, offset=0',
@@ -271,6 +311,12 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           _senderDisplayNames = await appState.databaseService.getDisplayNames(
             senderUsernames,
           );
+          // 同时查询头像
+          try {
+            _senderAvatarUrls = await appState.databaseService.getAvatarUrls(
+              senderUsernames,
+            );
+          } catch (_) {}
           if (!mounted) {
             return;
           }
@@ -672,6 +718,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                                     _selectedSession?.username ==
                                     session.username,
                                 onTap: () => _loadMessages(session),
+                                avatarUrl: _sessionAvatarUrls[session.username],
                               );
                             },
                           );
@@ -703,16 +750,25 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                       child: Row(
                         children: [
                           CircleAvatar(
-                            backgroundColor: Theme.of(
-                              context,
-                            ).colorScheme.primary,
-                            child: Text(
-                              StringUtils.getFirstChar(
-                                _selectedSession!.displayName ??
-                                    _selectedSession!.username,
-                              ),
-                              style: const TextStyle(color: Colors.white),
-                            ),
+                            backgroundColor: Theme.of(context).colorScheme.primary,
+                            backgroundImage: (_selectedSession != null &&
+                                    _sessionAvatarUrls[_selectedSession!.username] != null &&
+                                    _sessionAvatarUrls[_selectedSession!.username]!.isNotEmpty)
+                                ? NetworkImage(
+                                    _sessionAvatarUrls[_selectedSession!.username]!,
+                                  )
+                                : null,
+                            child: (_selectedSession == null ||
+                                    _sessionAvatarUrls[_selectedSession!.username] == null ||
+                                    _sessionAvatarUrls[_selectedSession!.username]!.isEmpty)
+                                ? Text(
+                                    StringUtils.getFirstChar(
+                                      _selectedSession!.displayName ??
+                                          _selectedSession!.username,
+                                    ),
+                                    style: const TextStyle(color: Colors.white),
+                                  )
+                                : null,
                           ),
                           const SizedBox(width: 12),
                           Expanded(
@@ -796,6 +852,14 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                                   shouldShowTime = timeDiff > 600;
                                 }
 
+                                // 选择头像：
+                                // 私聊：使用会话头像；群聊：使用发送者头像
+                                final avatarUrl = _selectedSession?.isGroup == true
+                                    ? (message.senderUsername != null
+                                        ? _senderAvatarUrls[message.senderUsername!]
+                                        : null)
+                                    : _sessionAvatarUrls[_selectedSession!.username];
+
                                 return MessageBubble(
                                   message: message,
                                   isFromMe: _isMessageFromMe(message),
@@ -803,6 +867,9 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                                   sessionUsername:
                                       _selectedSession?.username ?? '',
                                   shouldShowTime: shouldShowTime,
+                                  avatarUrl: _isMessageFromMe(message)
+                                      ? _myAvatarUrl
+                                      : avatarUrl,
                                 );
                               },
                             ),
