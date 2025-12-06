@@ -247,14 +247,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     try {
       final sessions = await appState.databaseService.getSessions();
       final filteredSessions = sessions.where((session) {
-        if (session.username.startsWith('gh_')) return false;
-        if (session.username.startsWith('weixin')) return false;
-        if (session.username.startsWith('qqmail')) return false;
-        if (session.username.startsWith('fmessage')) return false;
-        if (session.username.startsWith('medianote')) return false;
-        if (session.username.startsWith('floatbottle')) return false;
-        return session.username.contains('wxid_') ||
-            session.username.contains('@chatroom');
+        return ChatSession.shouldKeep(session.username);
       }).toList();
 
       if (!_sessionsChanged(filteredSessions)) return;
@@ -331,7 +324,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
       if (_scrollController.hasClients) {
         final distanceToBottom =
             _scrollController.position.maxScrollExtent -
-                _scrollController.position.pixels;
+            _scrollController.position.pixels;
         if (distanceToBottom < 80) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!_scrollController.hasClients) return;
@@ -402,19 +395,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
 
       // 在后台线程过滤会话
       final filteredSessions = sessions.where((session) {
-        // 排除公众号/服务号
-        if (session.username.startsWith('gh_')) return false;
-        // 排除其他系统会话
-        if (session.username.startsWith('weixin')) return false;
-        if (session.username.startsWith('qqmail')) return false;
-        if (session.username.startsWith('fmessage')) return false;
-        if (session.username.startsWith('medianote')) return false;
-        if (session.username.startsWith('floatbottle')) return false;
-        // 只保留个人聊天(wxid_)和群聊(@chatroom)
-        return session.username.contains('wxid_') ||
-            session.username.contains('@chatroom');
+        return ChatSession.shouldKeep(session.username);
       }).toList();
-
       if (mounted) {
         setState(() {
           _sessions = filteredSessions;
@@ -1079,12 +1061,13 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
                                       );
 
                                 final avatarOwner = _isMessageFromMe(message)
-                                    ? appState.databaseService
-                                            .currentAccountWxid ??
-                                        ''
+                                    ? appState
+                                              .databaseService
+                                              .currentAccountWxid ??
+                                          ''
                                     : (message.senderUsername ??
-                                        _selectedSession?.username ??
-                                        '');
+                                          _selectedSession?.username ??
+                                          '');
                                 final animateAvatar = _shouldAnimateAvatar(
                                   avatarOwner,
                                   appState,

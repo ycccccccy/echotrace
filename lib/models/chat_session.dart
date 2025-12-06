@@ -67,28 +67,33 @@ class ChatSession {
       username: _stringValue(['username', 'user_name', 'userName']),
       type: _intValue(['type']),
       unreadCount: _intValue(['unread_count', 'unreadCount']),
-      unreadFirstMsgSrvId:
-          _intValue(['unread_first_msg_srv_id', 'unreadFirstMsgSrvId']),
+      unreadFirstMsgSrvId: _intValue([
+        'unread_first_msg_srv_id',
+        'unreadFirstMsgSrvId',
+      ]),
       isHidden: _intValue(['is_hidden', 'isHidden']),
       summary: _stringValue(['summary', 'digest']),
       draft: _stringValue(['draft']),
       status: _intValue(['status']),
       lastTimestamp: _intValue(['last_timestamp', 'lastTimestamp']),
       sortTimestamp: _intValue(['sort_timestamp', 'sortTimestamp']),
-      lastClearUnreadTimestamp:
-          _intValue(['last_clear_unread_timestamp', 'lastClearUnreadTimestamp']),
+      lastClearUnreadTimestamp: _intValue([
+        'last_clear_unread_timestamp',
+        'lastClearUnreadTimestamp',
+      ]),
       lastMsgLocalId: _intValue([
         'last_msg_locald_id',
         'last_msg_localid',
         'last_msg_local_id',
-        'lastMsgLocalId'
+        'lastMsgLocalId',
       ]),
       lastMsgType: _intValue(['last_msg_type', 'lastMsgType']),
       lastMsgSubType: _intValue(['last_msg_sub_type', 'lastMsgSubType']),
       lastMsgSender: _stringValue(['last_msg_sender', 'lastMsgSender']),
-      lastSenderDisplayName: _stringValue(
-        ['last_sender_display_name', 'lastSenderDisplayName'],
-      ),
+      lastSenderDisplayName: _stringValue([
+        'last_sender_display_name',
+        'lastSenderDisplayName',
+      ]),
     );
   }
 
@@ -268,6 +273,32 @@ class ChatSession {
       return '草稿: $draft';
     }
     return '';
+  }
+
+  /// 判断会话是否应该保留（过滤掉公众号、系统号等）
+  static bool shouldKeep(String username) {
+    // 排除公众号/服务号
+    if (username.startsWith('gh_')) return false;
+
+    // 排除其他系统会话
+    if (username.startsWith('weixin')) return false;
+    if (username.startsWith('qqmail')) return false;
+    if (username.startsWith('fmessage')) return false;
+    if (username.startsWith('medianote')) return false;
+    if (username.startsWith('floatbottle')) return false;
+    if (username.startsWith('newsapp')) return false;
+    // 排除客服账号
+    if (username.contains('@kefu.openim')) return false;
+    if (username.contains('@openim')) return false;
+    if (username.contains('service_')) return false;
+
+    // 统一过滤逻辑：
+    // 1. 群聊 (@chatroom)
+    // 2. 标准wxid账号 (wxid_)
+    // 3. 自定义微信号 (不含@)
+    return username.contains('@chatroom') ||
+        username.startsWith('wxid_') ||
+        !username.contains('@');
   }
 
   @override

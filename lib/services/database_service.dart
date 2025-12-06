@@ -187,10 +187,7 @@ class DatabaseService {
       // 通过 WCDB DLL 打开实时加密数据库
       final handle = WeChatWCDBNative.openAccount(normalizedPath, hexKey);
       if (handle == null || handle <= 0) {
-        await logger.error(
-          'DatabaseService',
-          'WCDB DLL 打开实时数据库失败',
-        );
+        await logger.error('DatabaseService', 'WCDB DLL 打开实时数据库失败');
         // 拉取原生日志辅助定位
         final nativeLogs = WeChatWCDBNative.getNativeLogs();
         if (nativeLogs.isNotEmpty) {
@@ -245,19 +242,16 @@ class DatabaseService {
       final file = File(path);
       if (!file.existsSync()) return;
       final dir = file.parent;
-      _dbWatchSub = dir.watch(recursive: true).listen(
-        (event) {
-          final p = event.path.toLowerCase();
-          if (p.endsWith('.db') ||
-              p.endsWith('.db-wal') ||
-              p.endsWith('.db-shm') ||
-              p.contains('message_') ||
-              p.contains('session')) {
-            _dbChangeController.add(null);
-          }
-        },
-        onError: (_) => _stopRealtimeWatcher(),
-      );
+      _dbWatchSub = dir.watch(recursive: true).listen((event) {
+        final p = event.path.toLowerCase();
+        if (p.endsWith('.db') ||
+            p.endsWith('.db-wal') ||
+            p.endsWith('.db-shm') ||
+            p.contains('message_') ||
+            p.contains('session')) {
+          _dbChangeController.add(null);
+        }
+      }, onError: (_) => _stopRealtimeWatcher());
       // 初次连接也触发一次，确保 UI 能立即同步
       _dbChangeController.add(null);
     } catch (_) {
@@ -287,57 +281,51 @@ class DatabaseService {
             _wcdbGetSessions,
             _wcdbHandle!,
           );
-        await logger.info(
-          'DatabaseService',
-          '实时模式：DLL返回 ${maps.length} 条原始会话记录',
-        );
-        if (maps.isEmpty) {
-          final nativeLogs = WeChatWCDBNative.getNativeLogs();
-          if (nativeLogs.isNotEmpty) {
-            await logger.debug(
-              'DatabaseService',
-              '原生日志: ${nativeLogs.take(10).join(" | ")}',
-            );
-          }
-        }
-        if (maps.isNotEmpty) {
-          final sampleSize = maps.length > 3 ? 3 : maps.length;
-          for (var i = 0; i < sampleSize; i++) {
-            final row = maps[i];
-            await logger.debug(
-              'DatabaseService',
-              '实时模式：会话样本$i keys=${row.keys.toList()} values=${row}',
-            );
-          }
-        }
-
-        final allSessions = maps.map((map) => ChatSession.fromMap(map)).toList();
-
-        final filteredSessions = allSessions.where((session) {
-          final username = session.username;
-          final shouldKeep =
-              username.contains('@chatroom') ||
-              (username.startsWith('wxid_') && !username.contains('@')) ||
-              (!username.contains('@kefu.openim') &&
-                  !username.contains('service_') &&
-                  !username.startsWith('gh_') &&
-                  !username.contains('@openim'));
-          return shouldKeep;
-        }).toList();
-
-        // 填充显示名（从联系人数据库获取）
-        try {
-          final names = WeChatWCDBNative.getDisplayNames(
-            _wcdbHandle!,
-            filteredSessions.map((e) => e.username).toList(),
+          await logger.info(
+            'DatabaseService',
+            '实时模式：DLL返回 ${maps.length} 条原始会话记录',
           );
-          for (final s in filteredSessions) {
-            final n = names[s.username];
-            if (n != null && n.isNotEmpty) {
-              s.displayName = n;
+          if (maps.isEmpty) {
+            final nativeLogs = WeChatWCDBNative.getNativeLogs();
+            if (nativeLogs.isNotEmpty) {
+              await logger.debug(
+                'DatabaseService',
+                '原生日志: ${nativeLogs.take(10).join(" | ")}',
+              );
             }
           }
-        } catch (_) {}
+          if (maps.isNotEmpty) {
+            final sampleSize = maps.length > 3 ? 3 : maps.length;
+            for (var i = 0; i < sampleSize; i++) {
+              final row = maps[i];
+              await logger.debug(
+                'DatabaseService',
+                '实时模式：会话样本$i keys=${row.keys.toList()} values=$row',
+              );
+            }
+          }
+
+          final allSessions = maps
+              .map((map) => ChatSession.fromMap(map))
+              .toList();
+
+          final filteredSessions = allSessions.where((session) {
+            return ChatSession.shouldKeep(session.username);
+          }).toList();
+
+          // 填充显示名（从联系人数据库获取）
+          try {
+            final names = WeChatWCDBNative.getDisplayNames(
+              _wcdbHandle!,
+              filteredSessions.map((e) => e.username).toList(),
+            );
+            for (final s in filteredSessions) {
+              final n = names[s.username];
+              if (n != null && n.isNotEmpty) {
+                s.displayName = n;
+              }
+            }
+          } catch (_) {}
 
           await logger.info(
             'DatabaseService',
@@ -418,18 +406,7 @@ class DatabaseService {
 
       // 过滤掉公众号、服务号等非正常联系人
       final filteredSessions = allSessions.where((session) {
-        final username = session.username;
-
-        // 过滤条件：只显示正常联系人和群聊
-        final shouldKeep =
-            username.contains('@chatroom') ||
-            (username.startsWith('wxid_') && !username.contains('@')) ||
-            (!username.contains('@kefu.openim') &&
-                !username.contains('service_') &&
-                !username.startsWith('gh_') &&
-                !username.contains('@openim'));
-
-        return shouldKeep;
+        return ChatSession.shouldKeep(session.username);
       }).toList();
 
       await logger.info(
@@ -608,55 +585,55 @@ class DatabaseService {
     if (_mode == DatabaseMode.realtime && _wcdbHandle != null) {
       try {
         return await _withWcdbOp(() async {
-        await logger.info(
-          'DatabaseService',
-          '实时模式：通过WCDB DLL获取消息，sessionId=$sessionId, limit=$limit, offset=$offset',
-        );
-        final rows = await compute<Map<String, dynamic>,
-            List<Map<String, dynamic>>>(
-          _wcdbGetMessages,
-          {
-            'handle': _wcdbHandle!,
-            'username': sessionId,
-            'limit': limit,
-            'offset': offset,
-          },
-        );
-        if (rows.isEmpty) {
-          final nativeLogs = WeChatWCDBNative.getNativeLogs();
-          if (nativeLogs.isNotEmpty) {
-            await logger.debug(
-              'DatabaseService',
-              '原生日志(消息查询): ${nativeLogs.take(10).join(" | ")}',
-            );
-          }
-        } else {
-          final sampleSize = rows.length > 3 ? 3 : rows.length;
-          for (int i = 0; i < sampleSize; i++) {
-            await logger.debug(
-              'DatabaseService',
-              '消息样本$i keys=${rows[i].keys.toList()} raw_time=${rows[i]['create_time'] ?? rows[i]['sort_seq']} sort_seq=${rows[i]['sort_seq']} local_id=${rows[i]['local_id']} server_id=${rows[i]['server_id']}',
-            );
-          }
-        }
-        final messages = rows
-            .map(
-              (map) =>
-                  Message.fromMap(map, myWxid: _currentAccountWxid ?? ''),
-            )
-            .toList();
-        await logger.info(
-          'DatabaseService',
-          '实时模式：消息映射完成 rows=${rows.length} messages=${messages.length}',
-        );
-        if (messages.isNotEmpty) {
-          final first = messages.first;
-          final last = messages.length > 1 ? messages.last : messages.first;
-          await logger.debug(
+          await logger.info(
             'DatabaseService',
-            '消息映射时间范围: first=${first.createTime} sortSeq=${first.sortSeq} serverSeq=${first.serverSeq} | last=${last.createTime} sortSeq=${last.sortSeq} serverSeq=${last.serverSeq}',
+            '实时模式：通过WCDB DLL获取消息，sessionId=$sessionId, limit=$limit, offset=$offset',
           );
-        }
+          final rows =
+              await compute<Map<String, dynamic>, List<Map<String, dynamic>>>(
+                _wcdbGetMessages,
+                {
+                  'handle': _wcdbHandle!,
+                  'username': sessionId,
+                  'limit': limit,
+                  'offset': offset,
+                },
+              );
+          if (rows.isEmpty) {
+            final nativeLogs = WeChatWCDBNative.getNativeLogs();
+            if (nativeLogs.isNotEmpty) {
+              await logger.debug(
+                'DatabaseService',
+                '原生日志(消息查询): ${nativeLogs.take(10).join(" | ")}',
+              );
+            }
+          } else {
+            final sampleSize = rows.length > 3 ? 3 : rows.length;
+            for (int i = 0; i < sampleSize; i++) {
+              await logger.debug(
+                'DatabaseService',
+                '消息样本$i keys=${rows[i].keys.toList()} raw_time=${rows[i]['create_time'] ?? rows[i]['sort_seq']} sort_seq=${rows[i]['sort_seq']} local_id=${rows[i]['local_id']} server_id=${rows[i]['server_id']}',
+              );
+            }
+          }
+          final messages = rows
+              .map(
+                (map) =>
+                    Message.fromMap(map, myWxid: _currentAccountWxid ?? ''),
+              )
+              .toList();
+          await logger.info(
+            'DatabaseService',
+            '实时模式：消息映射完成 rows=${rows.length} messages=${messages.length}',
+          );
+          if (messages.isNotEmpty) {
+            final first = messages.first;
+            final last = messages.length > 1 ? messages.last : messages.first;
+            await logger.debug(
+              'DatabaseService',
+              '消息映射时间范围: first=${first.createTime} sortSeq=${first.sortSeq} serverSeq=${first.serverSeq} | last=${last.createTime} sortSeq=${last.sortSeq} serverSeq=${last.serverSeq}',
+            );
+          }
           return messages;
         });
       } catch (e, stackTrace) {
@@ -2533,10 +2510,7 @@ class DatabaseService {
 
     // 如果有实时调用在运行，等待它们结束，避免关闭句柄时崩溃
     if (_mode == DatabaseMode.realtime && _activeWcdbOps > 0) {
-      await logger.info(
-        'DatabaseService',
-        '等待 ${_activeWcdbOps} 个实时调用完成后再关闭...',
-      );
+      await logger.info('DatabaseService', '等待 $_activeWcdbOps 个实时调用完成后再关闭...');
       int waitedMs = 0;
       while (_activeWcdbOps > 0) {
         await Future.delayed(const Duration(milliseconds: 100));
@@ -2548,10 +2522,7 @@ class DatabaseService {
           );
         }
       }
-      await logger.info(
-        'DatabaseService',
-        '实时调用已全部结束，继续关闭',
-      );
+      await logger.info('DatabaseService', '实时调用已全部结束，继续关闭');
     }
 
     // 实时模式：关闭 WCDB 账号句柄
@@ -3380,6 +3351,16 @@ class DatabaseService {
           'DatabaseService',
           '成功加载联系人信息，已更新${sessions.where((s) => s.displayName != null && s.displayName!.isNotEmpty).length}个会话的显示名称',
         );
+        // 打印没有成功更新显示名称的会话
+        // final sessionsWithoutDisplayName = sessions
+        //     .where((s) => s.displayName == null || s.displayName!.isEmpty)
+        //     .toList();
+        // if (sessionsWithoutDisplayName.isNotEmpty) {
+        //   await logger.warning('DatabaseService', '以下会话未能更新显示名称:');
+        //   for (final session in sessionsWithoutDisplayName) {
+        //     await logger.warning('DatabaseService', '  - ${session.username}');
+        //   }
+        // }
       } finally {
         await contactDb.close();
       }
@@ -3572,8 +3553,10 @@ class DatabaseService {
     if (_sessionDbPath != null) {
       final wxidDir = _findWxidDirFromPath(_sessionDbPath!);
       if (wxidDir != null) {
+        await logger.info('DatabaseService', '从微信账号目录查找消息数据库: ${wxidDir.path}');
         // 查找所有 message_[0-9].db 文件
-        for (int i = 0; i < 10; i++) {
+        // 扩大查找范围，防止数据库分片超过9个
+        for (int i = 0; i < 100; i++) {
           final candidatePath = PathUtils.join(wxidDir.path, 'message_$i.db');
           final candidate = File(candidatePath);
           if (await candidate.exists()) {
@@ -4955,7 +4938,7 @@ class DatabaseService {
       final startTime = startDate.millisecondsSinceEpoch ~/ 1000;
       final endTime = endOfDay.millisecondsSinceEpoch ~/ 1000;
       final messages = await getMessagesByDate(chatroomId, startTime, endTime);
-      
+
       for (final message in messages) {
         // 从秒级时间戳创建 DateTime 对象
         final messageTime = DateTime.fromMillisecondsSinceEpoch(
@@ -4968,8 +4951,7 @@ class DatabaseService {
       }
 
       // --- 打印最终结果 ---
-    } catch (e) {
-    }
+    } catch (e) {}
 
     return hourlyCounts;
   }
@@ -5051,8 +5033,7 @@ class DatabaseService {
           }
         } catch (e) {}
       }
-    } catch (e) {
-    }
+    } catch (e) {}
 
     return typeCounts;
   }

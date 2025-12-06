@@ -195,17 +195,8 @@ class _ChatExportPageState extends State<ChatExportPage> {
 
       // 过滤掉公众号/服务号
       final filteredSessions = sessions.where((session) {
-        if (session.username.startsWith('gh_')) return false;
-        if (session.username.startsWith('weixin')) return false;
-        if (session.username.startsWith('qqmail')) return false;
-        if (session.username.startsWith('fmessage')) return false;
-        if (session.username.startsWith('medianote')) return false;
-        if (session.username.startsWith('floatbottle')) return false;
-        return session.username.contains('wxid_') ||
-            session.username.contains('@chatroom');
-      }).toList();
-
-      // 保存到缓存
+        return ChatSession.shouldKeep(session.username);
+      }).toList(); // 保存到缓存
       _cachedSessions = filteredSessions;
 
       if (mounted) {
