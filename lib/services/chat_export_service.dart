@@ -15,6 +15,9 @@ import 'logger_service.dart';
 class ChatExportService {
   final DatabaseService _databaseService;
   final Set<String> _missingDisplayNameLog = <String>{};
+  static final RegExp _invalidXmlChars = RegExp(
+    r'[\x00-\x08\x0B\x0C\x0E-\x1F]',
+  );
 
   ChatExportService(this._databaseService);
 
@@ -52,46 +55,39 @@ class ChatExportService {
       final myContactInfo = rawMyWxid.isNotEmpty
           ? await _getContactInfo(rawMyWxid)
           : <String, String>{};
-      final myDisplayName = await _buildMyDisplayName(
-        rawMyWxid,
-        myContactInfo,
-      );
+      final myDisplayName = await _buildMyDisplayName(rawMyWxid, myContactInfo);
 
-      final messageItems = messages
-          .map(
-            (msg) {
-              final isSend = msg.isSend == 1;
-              final senderName = _resolveSenderDisplayName(
-                msg: msg,
-                session: session,
-                isSend: isSend,
-                contactInfo: contactInfo,
-                myContactInfo: myContactInfo,
-                senderDisplayNames: senderDisplayNames,
-                myDisplayName: myDisplayName,
-              );
-              final senderWxid = _resolveSenderUsername(
-                msg: msg,
-                session: session,
-                isSend: isSend,
-                myWxid: myWxid,
-              );
+      final messageItems = messages.map((msg) {
+        final isSend = msg.isSend == 1;
+        final senderName = _resolveSenderDisplayName(
+          msg: msg,
+          session: session,
+          isSend: isSend,
+          contactInfo: contactInfo,
+          myContactInfo: myContactInfo,
+          senderDisplayNames: senderDisplayNames,
+          myDisplayName: myDisplayName,
+        );
+        final senderWxid = _resolveSenderUsername(
+          msg: msg,
+          session: session,
+          isSend: isSend,
+          myWxid: myWxid,
+        );
 
-              return {
-                'localId': msg.localId,
-                'createTime': msg.createTime,
-                'formattedTime': msg.formattedCreateTime,
-                'type': msg.typeDescription,
-                'localType': msg.localType,
-                'content': msg.displayContent,
-                'isSend': msg.isSend,
-                'senderUsername': senderWxid.isEmpty ? null : senderWxid,
-                'senderDisplayName': senderName,
-                'source': msg.source,
-              };
-            },
-          )
-          .toList();
+        return {
+          'localId': msg.localId,
+          'createTime': msg.createTime,
+          'formattedTime': msg.formattedCreateTime,
+          'type': msg.typeDescription,
+          'localType': msg.localType,
+          'content': msg.displayContent,
+          'isSend': msg.isSend,
+          'senderUsername': senderWxid.isEmpty ? null : senderWxid,
+          'senderDisplayName': senderName,
+          'source': msg.source,
+        };
+      }).toList();
 
       final data = {
         'session': {
@@ -172,10 +168,7 @@ class ChatExportService {
       final myContactInfo = rawMyWxid.isNotEmpty
           ? await _getContactInfo(rawMyWxid)
           : <String, String>{};
-      final myDisplayName = await _buildMyDisplayName(
-        rawMyWxid,
-        myContactInfo,
-      );
+      final myDisplayName = await _buildMyDisplayName(rawMyWxid, myContactInfo);
 
       final html = _generateHtml(
         session,
@@ -233,35 +226,29 @@ class ChatExportService {
       int currentRow = 1;
 
       // 添加会话信息行
-      sheet.getRangeByIndex(currentRow, 1).setText('会话信息');
+      _setTextSafe(sheet, currentRow, 1, '会话信息');
       currentRow++;
 
-      sheet.getRangeByIndex(currentRow, 1).setText('微信ID');
-      sheet
-          .getRangeByIndex(currentRow, 2)
-          .setText(_sanitizeUsername(session.username));
-      sheet.getRangeByIndex(currentRow, 3).setText('昵称');
-      sheet
-          .getRangeByIndex(currentRow, 4)
-          .setText(contactInfo['nickname'] ?? '');
-      sheet.getRangeByIndex(currentRow, 5).setText('备注');
-      sheet
-          .getRangeByIndex(currentRow, 6)
-          .setText(_getRemarkOrAlias(contactInfo));
+      _setTextSafe(sheet, currentRow, 1, '微信ID');
+      _setTextSafe(sheet, currentRow, 2, _sanitizeUsername(session.username));
+      _setTextSafe(sheet, currentRow, 3, '昵称');
+      _setTextSafe(sheet, currentRow, 4, contactInfo['nickname'] ?? '');
+      _setTextSafe(sheet, currentRow, 5, '备注');
+      _setTextSafe(sheet, currentRow, 6, _getRemarkOrAlias(contactInfo));
       currentRow++;
 
       // 空行
       currentRow++;
 
       // 设置表头
-      sheet.getRangeByIndex(currentRow, 1).setText('序号');
-      sheet.getRangeByIndex(currentRow, 2).setText('时间');
-      sheet.getRangeByIndex(currentRow, 3).setText('发送者昵称');
-      sheet.getRangeByIndex(currentRow, 4).setText('发送者微信ID');
-      sheet.getRangeByIndex(currentRow, 5).setText('发送者备注');
-      sheet.getRangeByIndex(currentRow, 6).setText('发送者身份');
-      sheet.getRangeByIndex(currentRow, 7).setText('消息类型');
-      sheet.getRangeByIndex(currentRow, 8).setText('内容');
+      _setTextSafe(sheet, currentRow, 1, '序号');
+      _setTextSafe(sheet, currentRow, 2, '时间');
+      _setTextSafe(sheet, currentRow, 3, '发送者昵称');
+      _setTextSafe(sheet, currentRow, 4, '发送者微信ID');
+      _setTextSafe(sheet, currentRow, 5, '发送者备注');
+      _setTextSafe(sheet, currentRow, 6, '发送者身份');
+      _setTextSafe(sheet, currentRow, 7, '消息类型');
+      _setTextSafe(sheet, currentRow, 8, '内容');
       currentRow++;
 
       // 获取所有发送者的显示名称
@@ -297,8 +284,10 @@ class ChatExportService {
       final currentAccountInfo = rawAccountWxid.isNotEmpty
           ? await _getContactInfo(rawAccountWxid)
           : <String, String>{};
-      final myDisplayName =
-          await _buildMyDisplayName(rawAccountWxid, currentAccountInfo);
+      final myDisplayName = await _buildMyDisplayName(
+        rawAccountWxid,
+        currentAccountInfo,
+      );
       final sanitizedAccountWxid = currentAccountWxid;
       if (sanitizedAccountWxid.isNotEmpty) {
         senderContactInfos[sanitizedAccountWxid] = currentAccountInfo;
@@ -327,29 +316,28 @@ class ChatExportService {
           senderRole = senderDisplayNames[msg.senderUsername] ?? '群成员';
           senderWxid = _sanitizeUsername(msg.senderUsername ?? '');
           final info = senderContactInfos[msg.senderUsername] ?? {};
-          senderNickname = _resolvePreferredName(
-            info,
-            fallback: senderRole,
-          );
+          senderNickname = _resolvePreferredName(info, fallback: senderRole);
           senderRemark = _getRemarkOrAlias(info);
         } else {
           senderRole = session.displayName ?? session.username;
           senderWxid = _sanitizeUsername(session.username);
-          senderNickname =
-              _resolvePreferredName(contactInfo, fallback: senderRole);
+          senderNickname = _resolvePreferredName(
+            contactInfo,
+            fallback: senderRole,
+          );
           senderRemark = _getRemarkOrAlias(contactInfo);
         }
 
         senderWxid = _sanitizeUsername(senderWxid);
 
         sheet.getRangeByIndex(currentRow, 1).setNumber(i + 1);
-        sheet.getRangeByIndex(currentRow, 2).setText(msg.formattedCreateTime);
-        sheet.getRangeByIndex(currentRow, 3).setText(senderNickname);
-        sheet.getRangeByIndex(currentRow, 4).setText(senderWxid);
-        sheet.getRangeByIndex(currentRow, 5).setText(senderRemark);
-        sheet.getRangeByIndex(currentRow, 6).setText(senderRole);
-        sheet.getRangeByIndex(currentRow, 7).setText(msg.typeDescription);
-        sheet.getRangeByIndex(currentRow, 8).setText(msg.displayContent);
+        _setTextSafe(sheet, currentRow, 2, msg.formattedCreateTime);
+        _setTextSafe(sheet, currentRow, 3, senderNickname);
+        _setTextSafe(sheet, currentRow, 4, senderWxid);
+        _setTextSafe(sheet, currentRow, 5, senderRemark);
+        _setTextSafe(sheet, currentRow, 6, senderRole);
+        _setTextSafe(sheet, currentRow, 7, msg.typeDescription);
+        _setTextSafe(sheet, currentRow, 8, msg.displayContent);
         currentRow++;
       }
 
@@ -464,7 +452,8 @@ class ChatExportService {
     final nickname = contactInfo['nickname'] ?? '';
     final remark = _getRemarkOrAlias(contactInfo);
     final sanitizedSessionWxid = _sanitizeUsername(session.username);
-    final hasDetails = nickname.isNotEmpty ||
+    final hasDetails =
+        nickname.isNotEmpty ||
         remark.isNotEmpty ||
         sanitizedSessionWxid.isNotEmpty;
 
@@ -705,7 +694,9 @@ class ChatExportService {
     buffer.writeln('    // 点击外部关闭菜单');
     buffer.writeln('    document.addEventListener("click", (e) => {');
     buffer.writeln('      const menu = document.getElementById("info-menu");');
-    buffer.writeln('      const btn = document.getElementById("info-menu-btn");');
+    buffer.writeln(
+      '      const btn = document.getElementById("info-menu-btn");',
+    );
     buffer.writeln(
       '      if (menu && btn && !menu.contains(e.target) && !btn.contains(e.target)) {',
     );
@@ -713,7 +704,9 @@ class ChatExportService {
     buffer.writeln('      }');
     buffer.writeln('    });');
     buffer.writeln('    ');
-    buffer.writeln('    const infoMenuBtn = document.getElementById("info-menu-btn");');
+    buffer.writeln(
+      '    const infoMenuBtn = document.getElementById("info-menu-btn");',
+    );
     buffer.writeln('    if (infoMenuBtn) {');
     buffer.writeln('      infoMenuBtn.addEventListener("click", (event) => {');
     buffer.writeln('        event.stopPropagation();');
@@ -730,6 +723,17 @@ class ChatExportService {
     buffer.writeln('</html>');
 
     return buffer.toString();
+  }
+
+  String _sanitizeForExcel(String? value) {
+    if (value == null || value.isEmpty) {
+      return '';
+    }
+    return value.replaceAll(_invalidXmlChars, '');
+  }
+
+  void _setTextSafe(Worksheet sheet, int row, int column, String? value) {
+    sheet.getRangeByIndex(row, column).setText(_sanitizeForExcel(value));
   }
 
   Future<String> _buildMyDisplayName(
@@ -751,17 +755,14 @@ class ChatExportService {
     }
 
     try {
-      final candidates = <String>{
-        trimmedWxid,
-        sanitizedWxid,
-      }..removeWhere((c) => c.isEmpty);
+      final candidates = <String>{trimmedWxid, sanitizedWxid}
+        ..removeWhere((c) => c.isEmpty);
 
       if (candidates.isEmpty) {
         return preferred;
       }
 
-      final names =
-          await _databaseService.getDisplayNames(candidates.toList());
+      final names = await _databaseService.getDisplayNames(candidates.toList());
       for (final candidate in candidates) {
         final resolved = names[candidate];
         if (resolved != null && resolved.trim().isNotEmpty) {
@@ -895,7 +896,8 @@ class ChatExportService {
   }) async {
     final Workbook workbook = Workbook();
     try {
-      final contactList = contacts ??
+      final contactList =
+          contacts ??
           await _databaseService.getAllContacts(
             includeStrangers: includeStrangers,
             includeChatroomParticipants: includeChatroomParticipants,
@@ -915,11 +917,11 @@ class ChatExportService {
       }
 
       int currentRow = 1;
-      sheet.getRangeByIndex(currentRow, 1).setText('序号');
-      sheet.getRangeByIndex(currentRow, 2).setText('昵称');
-      sheet.getRangeByIndex(currentRow, 3).setText('微信ID');
-      sheet.getRangeByIndex(currentRow, 4).setText('备注');
-      sheet.getRangeByIndex(currentRow, 5).setText('微信号');
+      _setTextSafe(sheet, currentRow, 1, '序号');
+      _setTextSafe(sheet, currentRow, 2, '昵称');
+      _setTextSafe(sheet, currentRow, 3, '微信ID');
+      _setTextSafe(sheet, currentRow, 4, '备注');
+      _setTextSafe(sheet, currentRow, 5, '微信号');
       currentRow++;
 
       for (int i = 0; i < contactList.length; i++) {
@@ -929,10 +931,10 @@ class ChatExportService {
             ? contact.nickName
             : contact.displayName;
         sheet.getRangeByIndex(currentRow, 1).setNumber(i + 1);
-        sheet.getRangeByIndex(currentRow, 2).setText(nickname);
-        sheet.getRangeByIndex(currentRow, 3).setText(contact.username);
-        sheet.getRangeByIndex(currentRow, 4).setText(contact.remark);
-        sheet.getRangeByIndex(currentRow, 5).setText(contact.alias);
+        _setTextSafe(sheet, currentRow, 2, nickname);
+        _setTextSafe(sheet, currentRow, 3, contact.username);
+        _setTextSafe(sheet, currentRow, 4, contact.remark);
+        _setTextSafe(sheet, currentRow, 5, contact.alias);
         currentRow++;
       }
 
@@ -945,8 +947,7 @@ class ChatExportService {
       String? resolvedFilePath = filePath;
       if (resolvedFilePath == null) {
         if (directoryPath != null && directoryPath.isNotEmpty) {
-          final fileName =
-              '通讯录_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+          final fileName = '通讯录_${DateTime.now().millisecondsSinceEpoch}.xlsx';
           resolvedFilePath = PathUtils.join(directoryPath, fileName);
         } else {
           final suggestedName =
@@ -1523,10 +1524,10 @@ class ChatExportService {
 
             if (maps.isNotEmpty) {
               final map = maps.first;
-              final nickName =
-                  _normalizeDisplayField(map['nick_name'] as String?);
-              final remark =
-                  _normalizeDisplayField(map['remark'] as String?);
+              final nickName = _normalizeDisplayField(
+                map['nick_name'] as String?,
+              );
+              final remark = _normalizeDisplayField(map['remark'] as String?);
               final alias = _normalizeDisplayField(map['alias'] as String?);
 
               if (_hasMeaningfulValue(remark)) {

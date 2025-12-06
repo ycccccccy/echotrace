@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/app_state.dart';
 import '../models/chat_session.dart';
@@ -1179,11 +1180,33 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
         ),
       ),
       actions: [
-        if (_isCompleted)
+        if (_isCompleted) ...[
+          TextButton(
+            onPressed: () async {
+              final path = widget.exportFolder;
+              final uri = Uri.directory(path);
+              try {
+                if (!await launchUrl(uri)) {
+                  throw 'Could not launch $uri';
+                }
+              } catch (e) {
+                // 如果 url_launcher 失败，尝试使用系统命令
+                if (Platform.isWindows) {
+                  await Process.run('explorer', [path]);
+                } else if (Platform.isMacOS) {
+                  await Process.run('open', [path]);
+                } else if (Platform.isLinux) {
+                  await Process.run('xdg-open', [path]);
+                }
+              }
+            },
+            child: const Text('打开所在文件夹'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('关闭'),
           ),
+        ],
       ],
     );
   }
