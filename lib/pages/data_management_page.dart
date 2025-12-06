@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import '../providers/app_state.dart';
 import '../services/config_service.dart';
 import '../services/decrypt_service.dart';
@@ -61,6 +63,7 @@ class _DataManagementPageState extends State<DataManagementPage>
   int _completedImageFiles = 0;
   String _currentDecryptingImage = '';
   final Map<String, bool> _imageDecryptResults = {}; // 记录每个图片的解密结果
+  final Map<String, String> _tableDisplayNameCache = {}; // Msg表哈希 -> 显示名
 
   @override
   void initState() {
@@ -1221,6 +1224,9 @@ class _DataManagementPageState extends State<DataManagementPage>
 
       await logger.info('DataManagementPage', '配置路径: $configuredPath');
 
+      // 预构建 Msg 表与展示名的映射，便于输出目录使用真实名字
+      await _prepareDisplayNameCache();
+
       // 扫描图片文件
       await _scanImagePath(configuredPath, documentsPath);
 
@@ -1248,6 +1254,92 @@ class _DataManagementPageState extends State<DataManagementPage>
   }
 
   /// 智能扫描图片路径（参考数据库扫描逻辑）
+  Future<void> _prepareDisplayNameCache() async {
+    if (!mounted) return;
+    try {
+      final appState = Provider.of<AppState>(context, listen: false);
+      final dbService = appState.databaseService;
+      if (!dbService.isConnected) {
+        await logger.warning('DataManagementPage', '数据库未连接，无法为图片生成展示名映射');
+        return;
+      }
+
+      final sessions = await dbService.getSessions();
+      if (sessions.isEmpty) {
+        await logger.warning('DataManagementPage', '未获取到会话列表，跳过展示名映射');
+        return;
+      }
+
+      final usernames = sessions
+          .map((s) => s.username)
+          .where((u) => u.isNotEmpty)
+          .toList();
+      final displayNames = await dbService.getDisplayNames(usernames);
+
+      _tableDisplayNameCache.clear();
+      for (final username in usernames) {
+        final hash = md5.convert(utf8.encode(username)).toString().toLowerCase();
+        final displayName = displayNames[username]?.trim();
+        if (displayName == null || displayName.isEmpty) continue;
+
+        _tableDisplayNameCache[hash] = displayName;
+        _tableDisplayNameCache['msg_$hash'] = displayName;
+      }
+
+      await logger.info(
+        'DataManagementPage',
+        '已构建图片输出目录映射: ${_tableDisplayNameCache.length} 项',
+      );
+    } catch (e, stackTrace) {
+      await logger.warning(
+        'DataManagementPage',
+        '构建图片展示名映射失败: $e',
+        stackTrace,
+      );
+    }
+  }
+
+  String _sanitizePathSegment(String name) {
+    var sanitized = name.replaceAll(RegExp(r'[<>:"/\\\\|?*]'), '_').trim();
+    if (sanitized.isEmpty) {
+      return '未知联系人';
+    }
+    // 避免过长的目录名
+    if (sanitized.length > 60) {
+      sanitized = sanitized.substring(0, 60);
+    }
+    return sanitized;
+  }
+
+  String _applyDisplayNameToRelativePath(String relativePath) {
+    if (_tableDisplayNameCache.isEmpty) return relativePath;
+
+    final sep = Platform.pathSeparator;
+    final hasLeadingSep = relativePath.startsWith(sep);
+    final parts = relativePath
+        .split(sep)
+        .where((p) => p.isNotEmpty)
+        .toList();
+    final attachIndex = parts.indexWhere((p) => p.toLowerCase() == 'attach');
+    if (attachIndex != -1 && attachIndex + 1 < parts.length) {
+      final tableSegment = parts[attachIndex + 1];
+      final normalized = tableSegment.toLowerCase();
+      String? displayName = _tableDisplayNameCache[normalized];
+
+      if (displayName == null && normalized.startsWith('msg_')) {
+        final stripped = normalized.substring(4);
+        displayName = _tableDisplayNameCache[stripped];
+      }
+
+      if (displayName != null && displayName.isNotEmpty) {
+        parts[attachIndex + 1] = _sanitizePathSegment(displayName);
+      }
+    }
+
+    final rebuilt = parts.join(sep);
+    return hasLeadingSep ? '$sep$rebuilt' : rebuilt;
+  }
+
   Future<void> _scanImagePath(String basePath, String documentsPath) async {
     final baseDir = Directory(basePath);
     if (!await baseDir.exists()) {
@@ -1412,6 +1504,9 @@ class _DataManagementPageState extends State<DataManagementPage>
 
             // 获取相对路径
             final relativePath = entity.path.replaceFirst(wxidDir.path, '');
+            final outputRelativePath = _applyDisplayNameToRelativePath(
+              relativePath,
+            );
 
             // 检测图片质量类型
             final imageQuality = _detectImageQuality(relativePath, fileSize);
@@ -1420,7 +1515,7 @@ class _DataManagementPageState extends State<DataManagementPage>
             final outputDir = Directory(
               '$documentsPath${Platform.pathSeparator}EchoTrace${Platform.pathSeparator}Images',
             );
-            final decryptedPath = '${outputDir.path}$relativePath'.replaceAll(
+            final decryptedPath = '${outputDir.path}$outputRelativePath'.replaceAll(
               '.dat',
               '.jpg',
             );
@@ -1431,7 +1526,7 @@ class _DataManagementPageState extends State<DataManagementPage>
                 originalPath: entity.path,
                 fileName: fileName,
                 fileSize: fileSize,
-                relativePath: relativePath,
+                relativePath: outputRelativePath,
                 isDecrypted: false, // 默认未解密，批量解密时会自动跳过已存在的
                 decryptedPath: decryptedPath,
                 version: 0, // 默认V3，解密时自动检测
