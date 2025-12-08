@@ -1,3 +1,4 @@
+// 全局应用状态：初始化日志/配置/数据库，管理页面路由、解密进度、错误与头像缓存
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';

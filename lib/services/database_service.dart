@@ -1,3 +1,4 @@
+// 数据库服务：管理实时/备份两种连接方式、跨库消息查询与统计、联系人/群聊辅助查询
 import 'dart:async';
 import 'dart:io';
 import 'dart:convert';

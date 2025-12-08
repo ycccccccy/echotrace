@@ -1,3 +1,4 @@
+// WCDB DLL FFI 封装：加载 Windows 动态库，提供实时获取会话/消息/头像等原生接口
 import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';

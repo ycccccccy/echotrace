@@ -1,3 +1,4 @@
+// 主界面布局：侧边栏 + 动画切换内容区，按 AppState.currentPage 渲染各业务页面
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';

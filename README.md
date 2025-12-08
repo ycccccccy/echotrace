@@ -104,6 +104,10 @@ flutter run
 flutter build windows
 ```
 
+更多架构、文件职责、调试与 CLI 说明，请阅读 [开发者指引](docs/development.md)。
+
+关于实时模式的实现可阅读 [模块调用文档](docs/wcdb_realtime.md)
+
 ##  未来计划
 
 我们正在努力让 EchoTrace 变得更好，未来计划实现以下功能：

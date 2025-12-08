@@ -1,3 +1,5 @@
+// 聊天会话模型：从数据库行构建，提供过滤、显示用摘要/时间等辅助属性
+
 /// 聊天会话数据模型
 class ChatSession {
   final String username;

@@ -1,3 +1,4 @@
+// 数据分析服务：封装会话/全局统计、时间分布、词频与联系人排名等逻辑
 import '../models/message.dart';
 import '../models/analytics_data.dart';
 import 'database_service.dart';

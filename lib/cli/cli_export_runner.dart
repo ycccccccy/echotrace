@@ -1,3 +1,4 @@
+// CLI 导出入口：解析命令行参数，初始化 AppState，批量导出会话为 JSON/HTML/Excel
 import 'dart:io';
 import 'dart:async';
 

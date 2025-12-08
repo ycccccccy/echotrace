@@ -1,3 +1,4 @@
+// 应用入口：处理 CLI 导出参数，创建全局 AppState 并启动 UI
 import 'dart:io';
 
 import 'package:flutter/material.dart';

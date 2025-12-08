@@ -1,3 +1,4 @@
+// 数据库解密服务（Go FFI）：校验密钥并解密数据库到临时路径
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'go_decrypt_ffi.dart';
