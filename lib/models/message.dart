@@ -328,7 +328,8 @@ class Message {
             isSystemCenter: true,
           );
         }
-        return decodedContent.isNotEmpty ? decodedContent : '[系统消息]';
+        final cleaned = _cleanSystemMessage(decodedContent);
+        return cleaned.isNotEmpty ? cleaned : '[系统消息]';
 
       case 244813135921: // 引用消息
         final result = _parseQuoteMessage(
@@ -466,6 +467,20 @@ class Message {
         .replaceAll('&#x20;', ' ')
         .replaceAll('&#x0A;', '\n')
         .replaceAll('&#x0D;', '\r');
+  }
+
+  /// 清理系统消息中的标签/图标，保留可读文本
+  static String _cleanSystemMessage(String input) {
+    if (input.isEmpty) return '';
+    var text = input;
+    // 去掉图片标签
+    text = text.replaceAll(RegExp(r'<img[^>]*>', caseSensitive: false), '');
+    // 去掉自定义链接/标签，但保留中间文字
+    text =
+        text.replaceAll(RegExp(r'</?[_a-zA-Z0-9]+[^>]*>', caseSensitive: false), '');
+    // 去掉多余空白
+    text = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return text;
   }
 
   /// 从XML中提取指定标签的值
@@ -800,6 +815,42 @@ class Message {
 
   /// 是否为图片消息（暂时禁用图片显示，改为文本）
   bool get hasImage => false;
+
+  /// 图片消息调试信息（便于日志查看）
+  String get imageDebugInfo {
+    if (localType != 3) return '';
+    final xml = compressContent.isNotEmpty ? compressContent : messageContent;
+    if (xml.isEmpty) return '';
+    String _attr(String name) {
+      final match = RegExp('$name="([^"]+)"').firstMatch(xml);
+      return match?.group(1) ?? '';
+    }
+
+    String _short(String v, [int max = 80]) {
+      if (v.isEmpty) return '';
+      if (v.length <= max) return v;
+      return '${v.substring(0, max)}...(${v.length})';
+    }
+
+    final items = <String>[];
+    final aesKey = _attr('aeskey');
+    final thumbKey = _attr('cdnthumbaeskey');
+    final midUrl = _attr('cdnmidimgurl');
+    final bigUrl = _attr('cdnbigimgurl');
+    final length = _attr('length');
+    final hdLength = _attr('hdlength');
+    final hevcSize = _attr('hevc_mid_size');
+
+    if (aesKey.isNotEmpty) items.add('aeskey=${_short(aesKey, 120)}');
+    if (thumbKey.isNotEmpty) items.add('thumbKey=${_short(thumbKey, 120)}');
+    if (midUrl.isNotEmpty) items.add('midUrl=${_short(midUrl)}');
+    if (bigUrl.isNotEmpty) items.add('bigUrl=${_short(bigUrl)}');
+    if (length.isNotEmpty) items.add('len=$length');
+    if (hdLength.isNotEmpty) items.add('hdlen=$hdLength');
+    if (hevcSize.isNotEmpty) items.add('hevc=$hevcSize');
+
+    return items.join(', ');
+  }
 
   /// 获取显示内容 - 直接返回解析后的内容
   String get displayContent {
