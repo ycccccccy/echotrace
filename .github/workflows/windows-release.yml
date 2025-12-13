@@ -44,10 +44,7 @@ jobs:
           $v = $tag.TrimStart("v")
           $msixVersion = "$v.0"
 
-          dart run msix:create `
-            --version $msixVersion `
-            --no-sign `
-            --install-certificate false
+          dart run msix:create --version $msixVersion --certificate-path none
 
           $out = Get-ChildItem -Recurse -Filter "*.msix" | Select-Object -First 1
           if (!$out) { throw "msix not found" }
