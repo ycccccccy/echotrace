@@ -179,23 +179,22 @@ class _SettingsPageState extends State<SettingsPage>
   String? _extractWxidFromDirName(String dirName) {
     final trimmed = dirName.trim();
     if (trimmed.isEmpty) return null;
-
-    // 兼容旧版 wxid_xxx_123 目录，去掉尾部数字
-    final legacyMatch = RegExp(
-      r'^(wxid_[a-zA-Z0-9]+)(?:_\d+)?$',
-      caseSensitive: false,
-    ).firstMatch(trimmed);
-    if (legacyMatch != null) {
-      return legacyMatch.group(1);
-    }
-
-    // 其他命名直接返回
+    // 保留原始目录名（用于拼路径/展示）
     return trimmed;
   }
 
   String? _normalizeWxid(String value) {
-    final extracted = _extractWxidFromDirName(value);
-    return extracted?.toLowerCase();
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+
+    final lower = trimmed.toLowerCase();
+    if (!lower.startsWith('wxid_')) return lower;
+
+    // wxid_x_xxx -> wxid_x
+    final match =
+        RegExp(r'^(wxid_[^_]+)', caseSensitive: false).firstMatch(trimmed);
+    if (match != null) return match.group(1)!.toLowerCase();
+    return lower;
   }
 
   /// 收集包含 db_storage 的账号目录候选
@@ -204,11 +203,12 @@ class _SettingsPageState extends State<SettingsPage>
     if (!await rootDir.exists()) return [];
 
     final candidates = <WxidCandidate>[];
+    final normalizedManual = _normalizeWxid(_wxidController.text.trim());
 
     await for (final entity in rootDir.list()) {
       if (entity is! Directory) continue;
-      final wxid = _extractWxidFromDirName(p.basename(entity.path));
-      if (wxid == null) continue;
+      final wxidRaw = _extractWxidFromDirName(p.basename(entity.path));
+      if (wxidRaw == null) continue;
 
       final dbStorage = Directory(
         '${entity.path}${Platform.pathSeparator}db_storage',
@@ -224,9 +224,16 @@ class _SettingsPageState extends State<SettingsPage>
         modified = (await dbStorage.stat()).modified;
       }
 
+      final wxidNormalized = _normalizeWxid(wxidRaw);
+      if (normalizedManual != null &&
+          wxidNormalized != null &&
+          wxidNormalized != normalizedManual) {
+        continue; // 只收集匹配的账号
+      }
+
       candidates.add(
         WxidCandidate(
-          wxid: wxid,
+          wxid: wxidRaw,
           modified: modified,
           path: entity.path,
         ),

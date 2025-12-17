@@ -35,7 +35,7 @@ class DatabaseService {
   static String? _messageDbPath;
   String? _contactDbPath;
   String? _currentAccountWxid;
-  String? _manualWxid; // 从配置/手动输入的当前账号wxid
+  String? _manualWxid; // 从配置/手动输入的当前账号wxid（已规范化用于业务匹配）
 
   // 实时模式下，使用 WCDB DLL 的账号句柄
   int? _wcdbHandle;
@@ -2600,7 +2600,22 @@ class DatabaseService {
 
   /// 配置层设置手动 wxid（优先于路径推断）
   void setManualWxid(String? wxid) {
-    _manualWxid = wxid;
+    _manualWxid = _normalizeManualWxid(wxid);
+  }
+
+  /// 规范化手动输入/配置的 wxid：保留 wxid_ 前缀，去掉额外后缀并小写
+  String? _normalizeManualWxid(String? wxid) {
+    if (wxid == null) return null;
+    final trimmed = wxid.trim();
+    if (trimmed.isEmpty) return null;
+
+    // 非 wxid 开头的自定义账号直接返回原始字符串
+    if (!trimmed.toLowerCase().startsWith('wxid_')) return trimmed;
+
+    final match =
+        RegExp(r'^(wxid_[^_]+)', caseSensitive: false).firstMatch(trimmed);
+    if (match != null) return match.group(1)!.toLowerCase();
+    return trimmed.toLowerCase();
   }
 
   /// 当前数据路径（从session数据库路径推导）

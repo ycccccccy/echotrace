@@ -54,7 +54,8 @@ class WxidScanService {
         // 优先使用 login 目录中的登录时间
         modified = loginTimes[normalized] ?? modified;
         final candidate = WxidCandidate(
-          wxid: normalized,
+          // 保留完整目录名用于后续拼接路径
+          wxid: name,
           modified: modified,
           path: entity.path,
         );
@@ -138,9 +139,6 @@ class WxidScanService {
     final roots = <String>[];
     final userProfile = Platform.environment['USERPROFILE'] ?? '';
     if (userProfile.isNotEmpty) {
-      // 微信4登录信息配置路径
-      roots.add(p.join(userProfile, 'AppData', 'Roaming', 'Tencent', 'xwechat', 'login'));
-
       // 微信4的路径
       roots.add(p.join(userProfile, 'Documents', 'xwechat_files'));
 
