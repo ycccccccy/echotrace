@@ -5,6 +5,7 @@ import '../models/message.dart';
 import '../utils/string_utils.dart';
 import '../utils/xml_message_parser.dart';
 import '../providers/app_state.dart';
+import 'emoji_message_widget.dart';
 import 'image_message_widget.dart';
 import 'voice_message_widget.dart';
 
@@ -253,6 +254,11 @@ class _MessageBubbleState extends State<MessageBubble> {
                 sessionUsername: widget.sessionUsername,
                 isFromMe: true,
               )
+            else if (widget.message.localType == 47)
+              EmojiMessageWidget(
+                message: widget.message,
+                isFromMe: true,
+              )
             else if (widget.message.hasImage)
               ImageMessageWidget(
                 message: widget.message,
@@ -426,6 +432,11 @@ class _MessageBubbleState extends State<MessageBubble> {
               VoiceMessageWidget(
                 message: widget.message,
                 sessionUsername: widget.sessionUsername,
+                isFromMe: false,
+              )
+            else if (widget.message.localType == 47)
+              EmojiMessageWidget(
+                message: widget.message,
                 isFromMe: false,
               )
             else if (widget.message.hasImage)

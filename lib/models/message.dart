@@ -27,6 +27,13 @@ class Message {
   final String? senderUsername;
   // 图片消息的 MD5（从 XML 提取）
   final String? imageMd5;
+  // 动画表情 CDN URL（从 XML 提取，已解码 &amp;）
+  final String? emojiCdnUrl;
+  // 动画表情 MD5（从 XML 提取）
+  final String? emojiMd5;
+  // 动画表情尺寸（从 XML 提取）
+  final int? emojiWidth;
+  final int? emojiHeight;
   // 我的wxid
   final String? myWxid;
   // 拍一拍消息的解析信息（模板和需要查询的wxid列表）
@@ -60,6 +67,10 @@ class Message {
     this.isSend,
     this.senderUsername,
     this.imageMd5,
+    this.emojiCdnUrl,
+    this.emojiMd5,
+    this.emojiWidth,
+    this.emojiHeight,
     this.myWxid,
     this.patInfo,
     this.voiceDurationSeconds,
@@ -71,8 +82,7 @@ class Message {
     final n = double.tryParse(input);
     if (n == null) return null;
     if (n <= 0) return null;
-    // 如果非常大，认为是毫秒，转秒
-    final seconds = n > 600 ? n / 1000.0 : n.toDouble();
+    final seconds = n / 1000.0;
     return seconds.round();
   }
 
@@ -160,6 +170,10 @@ class Message {
     final senderDisplayName = _safeStringFromMap(map, 'sender_display_name');
     int? isSendVal = _readIsSend(map);
     int? voiceDurationSeconds;
+    String? emojiCdnUrl;
+    String? emojiMd5;
+    int? emojiWidth;
+    int? emojiHeight;
 
     // 步骤2：根据localType解析内容
     final parsedContent = _parseMessageContent(
@@ -211,6 +225,24 @@ class Message {
     String? imageMd5;
     if (localType == 3 && actualContent.isNotEmpty) {
       imageMd5 = _extractImageMd5(actualContent);
+    }
+
+    // 动画表情：优先从 message_content 解码 XML，提取 cdnurl
+    if (localType == 47) {
+      final rawMessageContent =
+          map['message_content'] ??
+          map['WCDB_CT_message_content'] ??
+          map['content'];
+      var emojiXml = decodeMaybeCompressed(rawMessageContent);
+      if (emojiXml.isEmpty && messageContent.isNotEmpty) {
+        emojiXml = decodeMaybeCompressed(messageContent);
+      }
+      if (emojiXml.isNotEmpty) {
+        emojiCdnUrl = _extractEmojiCdnUrl(emojiXml);
+        emojiMd5 = _extractImageMd5(emojiXml);
+        emojiWidth = _extractIntAttribute(emojiXml, 'width');
+        emojiHeight = _extractIntAttribute(emojiXml, 'height');
+      }
     }
 
     // 提取拍一拍消息信息
@@ -269,6 +301,10 @@ class Message {
       isSend: isSendVal,
       senderUsername: senderUsername.isEmpty ? null : senderUsername,
       imageMd5: imageMd5,
+      emojiCdnUrl: emojiCdnUrl,
+      emojiMd5: emojiMd5,
+      emojiWidth: emojiWidth,
+      emojiHeight: emojiHeight,
       myWxid: myWxid,
       patInfo: patInfo,
       voiceDurationSeconds: voiceDurationSeconds,
@@ -347,6 +383,10 @@ class Message {
       isSend: isSendVal,
       senderUsername: senderUsername.isEmpty ? null : senderUsername,
       imageMd5: null,
+      emojiCdnUrl: null,
+      emojiMd5: null,
+      emojiWidth: null,
+      emojiHeight: null,
       myWxid: myWxid,
       patInfo: null,
       voiceDurationSeconds: null,
@@ -780,6 +820,35 @@ class Message {
     }
   }
 
+  static String? _extractEmojiCdnUrl(String xml) {
+    try {
+      final pattern = RegExp(
+        "cdnurl\\s*=\\s*['\"]([^'\"]+)['\"]",
+        caseSensitive: false,
+      );
+      final match = pattern.firstMatch(xml);
+      if (match == null) return null;
+      final rawUrl = match.group(1)!;
+      return rawUrl.replaceAll('&amp;', '&');
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static int? _extractIntAttribute(String xml, String name) {
+    try {
+      final pattern = RegExp(
+        "$name\\s*=\\s*['\"](\\d+)['\"]",
+        caseSensitive: false,
+      );
+      final match = pattern.firstMatch(xml);
+      if (match == null) return null;
+      return int.tryParse(match.group(1)!);
+    } catch (e) {
+      return null;
+    }
+  }
+
   /// 解码二进制内容（处理zstd压缩）
   static String _decodeBinaryContent(Uint8List data) {
     if (data.isEmpty) return '';
@@ -957,7 +1026,7 @@ class Message {
     }
   }
 
-  /// 获取消息类型描述 - [这个是您已有的实例 getter，保持不变]
+  /// 获取消息类型描述 
   String get typeDescription {
     // 内部直接调用我们新的静态方法，避免代码重复
     return Message.getTypeDescriptionFromInt(localType);
@@ -991,7 +1060,7 @@ class Message {
   /// 是否为压缩内容
   bool get isCompressed => compressContent.isNotEmpty;
 
-  /// 是否为图片消息（暂时禁用图片显示，改为文本）
+  /// 是否为图片消息
   bool get hasImage => isImageMessage;
 
   /// 从 packed_info_data 提取图片文件名（不含扩展名）
@@ -1026,7 +1095,7 @@ class Message {
     return null;
   }
 
-  /// 图片消息调试信息（便于日志查看）
+  /// 图片消息调试信息
   String get imageDebugInfo {
     if (localType != 3) return '';
     final xml = compressContent.isNotEmpty ? compressContent : messageContent;
