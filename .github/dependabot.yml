@@ -1,13 +1,13 @@
 version: 2
 updates:
-  # 1. 针对 Flutter (Dart) 部分
-  - package-ecosystem: "pub"        # Flutter/Dart 专用的标识符
-    directory: "/"                  # 如果 pubspec.yaml 在根目录，就填 "/"
+  # 1. Flutter部分
+  - package-ecosystem: "pub"
+    directory: "/"
     schedule:
       interval: "weekly"
 
-  # 2. 针对 Go 子模块
-  - package-ecosystem: "gomod"      # Go 语言的标识符
-    directory: "/go_decrypt"        # 【重要】请修改为你 Go 子模块的具体文件夹路径（例如 "/backend"）
+  # 2. Go 子模块
+  - package-ecosystem: "gomod"
+    directory: "/go_decrypt"
     schedule:
       interval: "weekly"
