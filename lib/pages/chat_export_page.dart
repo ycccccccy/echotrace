@@ -80,6 +80,7 @@ class _ChatExportPageState extends State<ChatExportPage>
 
   void _handleSearchFocusChange() {
     if (_searchFocusNode.hasFocus) {
+      // ignore: invalid_use_of_visible_for_testing_member
       HardwareKeyboard.instance.clearState();
     }
   }
