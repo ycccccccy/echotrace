@@ -40,16 +40,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pub-
 
-      - name: Cache CMake ExternalProject (zstd_native)
-        uses: actions/cache@v4
-        with:
-          path: |
-            build/windows/x64/plugins/zstd_native
-            build/windows/x64/CMakeFiles
-          key: ${{ runner.os }}-cmake-ext-${{ hashFiles('**/pubspec.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cmake-ext-
-
       - run: flutter clean
       - run: flutter pub get
 
