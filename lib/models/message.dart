@@ -749,7 +749,7 @@ class Message {
     try {
       // 兼容形如 voicelength="16765" 或 length=31264
       final pattern = RegExp(
-        '$attributeName\\s*=\\s*\"?(\\d+(?:\\.\\d+)?)\"?',
+        '$attributeName\\s*=\\s*"?(\\d+(?:\\.\\d+)?)"?',
         caseSensitive: false,
       );
       final match = pattern.firstMatch(xml);

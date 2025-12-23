@@ -20,12 +20,19 @@ class DataManagementPage extends StatefulWidget {
   State<DataManagementPage> createState() => _DataManagementPageState();
 }
 
-class _DataManagementPageState extends State<DataManagementPage>
-    with SingleTickerProviderStateMixin {
+class _DataManagementPageState extends State<DataManagementPage> {
+  Color get _primaryColor => Theme.of(context).colorScheme.primary;
+  Color get _tertiaryColor => Theme.of(context).colorScheme.tertiary;
+  Color get _updateColor => const Color(0xFFF4B400);
+  Color get _surfaceColor => Theme.of(context).cardColor;
+  Color get _borderColor =>
+      Theme.of(context).colorScheme.outline.withValues(alpha: 0.12);
   final ConfigService _configService = ConfigService();
   late final DecryptService _decryptService;
   late final ImageDecryptService _imageDecryptService;
-  late final TabController _tabController;
+  final GlobalKey<NavigatorState> _sectionNavigatorKey =
+      GlobalKey<NavigatorState>();
+  String _currentSection = 'database';
 
   // 数据库文件相关
   final List<DatabaseFile> _databaseFiles = [];
@@ -41,12 +48,10 @@ class _DataManagementPageState extends State<DataManagementPage>
   String _currentDecryptingFile = '';
   final Map<String, bool> _decryptResults = {}; // 记录每个文件的解密结果
 
-  // 单个文件解密进度
-  final int _currentFilePages = 0;
-  final int _totalFilePages = 0;
-
   // 进度节流相关
   final Map<String, DateTime> _lastProgressUpdateMap = {}; // 每个文件独立的节流时间戳
+  final Map<String, double> _lastProgressValueMap = {}; // 记录上次进度值，避免重复刷新
+  final Map<String, ValueNotifier<double>> _progressNotifiers = {};
 
   // 图片文件相关
   final List<ImageFile> _imageFiles = [];
@@ -70,7 +75,6 @@ class _DataManagementPageState extends State<DataManagementPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _decryptService = DecryptService();
     _decryptService.initialize();
     _imageDecryptService = ImageDecryptService();
@@ -80,7 +84,10 @@ class _DataManagementPageState extends State<DataManagementPage>
 
   @override
   void dispose() {
-    _tabController.dispose();
+    for (final notifier in _progressNotifiers.values) {
+      notifier.dispose();
+    }
+    _progressNotifiers.clear();
     _decryptService.dispose();
     _imageSearchController.dispose();
     super.dispose();
@@ -120,6 +127,8 @@ class _DataManagementPageState extends State<DataManagementPage>
 
       // 清理上次更新时重命名的旧文件（.old.* 后缀）
       await _cleanupOldRenamedFiles(documentsPath);
+
+      _syncProgressNotifiers();
     } catch (e, stackTrace) {
       await logger.error('DataManagementPage', '加载数据库文件失败', e, stackTrace);
       _showMessage('加载数据库文件失败: $e', false);
@@ -497,28 +506,13 @@ class _DataManagementPageState extends State<DataManagementPage>
       // 创建所有解密任务（每个数据库一个独立的Isolate线程）
       final decryptTasks = pendingFiles.map((file) async {
         try {
-          // 解密（添加进度节流，避免频繁setState）
-          DateTime? lastUpdate;
+          // 解密（仅在进度变化明显时刷新 UI）
           final decryptedPath = await _decryptService.decryptDatabase(
             file.originalPath,
             key,
             (current, total) {
-              // 节流：每100ms最多更新一次UI
-              final now = DateTime.now();
-              if (lastUpdate == null ||
-                  now.difference(lastUpdate!).inMilliseconds > 100) {
-                lastUpdate = now;
-                if (mounted) {
-                  setState(() {
-                    final index = _databaseFiles.indexWhere(
-                      (f) => f.originalPath == file.originalPath,
-                    );
-                    if (index != -1) {
-                      _databaseFiles[index].decryptProgress = current / total;
-                    }
-                  });
-                }
-              }
+              if (total <= 0) return;
+              _updateDecryptProgress(file, current / total);
             },
           );
 
@@ -589,6 +583,7 @@ class _DataManagementPageState extends State<DataManagementPage>
 
           await File(decryptedPath).copy(file.decryptedPath);
           _lastProgressUpdateMap.remove(file.originalPath);
+          _lastProgressValueMap.remove(file.originalPath);
 
           if (mounted) {
             setState(() {
@@ -598,6 +593,7 @@ class _DataManagementPageState extends State<DataManagementPage>
               if (index != -1) {
                 _databaseFiles[index].isDecrypted = true;
                 _databaseFiles[index].decryptProgress = 1.0;
+                _getProgressNotifier(_databaseFiles[index]).value = 1.0;
               }
               _completedFiles++;
               _decryptResults[file.fileName] = true;
@@ -623,6 +619,7 @@ class _DataManagementPageState extends State<DataManagementPage>
             stackTrace,
           );
           _lastProgressUpdateMap.remove(file.originalPath);
+          _lastProgressValueMap.remove(file.originalPath);
           _decryptResults[file.fileName] = false;
           return false; // 失败
         }
@@ -827,16 +824,8 @@ class _DataManagementPageState extends State<DataManagementPage>
             file.originalPath,
             key,
             (current, total) {
-              if (mounted) {
-                setState(() {
-                  final index = _databaseFiles.indexWhere(
-                    (f) => f.originalPath == file.originalPath,
-                  );
-                  if (index != -1) {
-                    _databaseFiles[index].decryptProgress = current / total;
-                  }
-                });
-              }
+              if (total <= 0) return;
+              _updateDecryptProgress(file, current / total);
             },
           );
 
@@ -958,6 +947,7 @@ class _DataManagementPageState extends State<DataManagementPage>
 
           final newStat = await File(file.decryptedPath).stat();
           _lastProgressUpdateMap.remove(file.originalPath);
+          _lastProgressValueMap.remove(file.originalPath);
 
           if (mounted) {
             setState(() {
@@ -966,6 +956,7 @@ class _DataManagementPageState extends State<DataManagementPage>
               );
               if (index != -1) {
                 _databaseFiles[index].decryptProgress = 1.0;
+                _getProgressNotifier(_databaseFiles[index]).value = 1.0;
                 _databaseFiles[index] = _databaseFiles[index].copyWith(
                   decryptedModified: newStat.modified,
                 );
@@ -984,6 +975,7 @@ class _DataManagementPageState extends State<DataManagementPage>
           });
         } catch (e) {
           _lastProgressUpdateMap.remove(file.originalPath);
+          _lastProgressValueMap.remove(file.originalPath);
           _decryptResults[file.fileName] = false;
         }
       }
@@ -1087,17 +1079,8 @@ class _DataManagementPageState extends State<DataManagementPage>
         file.originalPath,
         key,
         (current, total) {
-          if (mounted) {
-            _lastProgressUpdateMap[file.originalPath] = DateTime.now();
-            setState(() {
-              final index = _databaseFiles.indexWhere(
-                (f) => f.originalPath == file.originalPath,
-              );
-              if (index != -1) {
-                _databaseFiles[index].decryptProgress = current / total;
-              }
-            });
-          }
+          if (total <= 0) return;
+          _updateDecryptProgress(file, current / total);
         },
       );
 
@@ -1136,6 +1119,7 @@ class _DataManagementPageState extends State<DataManagementPage>
 
       // 清理节流时间戳
       _lastProgressUpdateMap.remove(file.originalPath);
+      _lastProgressValueMap.remove(file.originalPath);
 
       if (mounted) {
         setState(() {
@@ -1145,6 +1129,7 @@ class _DataManagementPageState extends State<DataManagementPage>
           if (index != -1) {
             _databaseFiles[index].isDecrypted = true;
             _databaseFiles[index].decryptProgress = 1.0;
+            _getProgressNotifier(_databaseFiles[index]).value = 1.0;
           }
         });
 
@@ -1181,6 +1166,7 @@ class _DataManagementPageState extends State<DataManagementPage>
       _showMessage('解密失败: $e', false);
       // 清理节流时间戳
       _lastProgressUpdateMap.remove(file.originalPath);
+      _lastProgressValueMap.remove(file.originalPath);
 
       // 等待文件系统稳定
       await logger.info('DataManagementPage', '等待文件系统稳定...');
@@ -1716,9 +1702,7 @@ class _DataManagementPageState extends State<DataManagementPage>
           continue; // 跳过已存在的文件
         }
 
-        setState(() {
-          _currentDecryptingImage = imageFile.fileName;
-        });
+        _currentDecryptingImage = imageFile.fileName;
 
         try {
           // 创建输出目录
@@ -1754,9 +1738,13 @@ class _DataManagementPageState extends State<DataManagementPage>
           );
         }
 
-        setState(() {
-          _completedImageFiles++;
-        });
+        _completedImageFiles++;
+        final progress = _totalImageFiles > 0
+            ? _completedImageFiles / _totalImageFiles
+            : 0.0;
+        if (_shouldUpdateProgress('images', progress) && mounted) {
+          setState(() {});
+        }
       }
 
       _showImageMessage(
@@ -1773,6 +1761,8 @@ class _DataManagementPageState extends State<DataManagementPage>
           _currentDecryptingImage = '';
         });
       }
+      _lastProgressUpdateMap.remove('images');
+      _lastProgressValueMap.remove('images');
     }
   }
 
@@ -1844,43 +1834,196 @@ class _DataManagementPageState extends State<DataManagementPage>
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: Column(
+  void _syncProgressNotifiers() {
+    final activeKeys =
+        _databaseFiles.map((file) => file.originalPath).toSet();
+    final staleKeys = _progressNotifiers.keys
+        .where((key) => !activeKeys.contains(key))
+        .toList();
+    for (final key in staleKeys) {
+      _progressNotifiers[key]?.dispose();
+      _progressNotifiers.remove(key);
+    }
+    for (final file in _databaseFiles) {
+      _progressNotifiers.putIfAbsent(
+        file.originalPath,
+        () => ValueNotifier<double>(file.decryptProgress),
+      );
+    }
+  }
+
+  ValueNotifier<double> _getProgressNotifier(DatabaseFile file) {
+    return _progressNotifiers.putIfAbsent(
+      file.originalPath,
+      () => ValueNotifier<double>(file.decryptProgress),
+    );
+  }
+
+  bool _shouldUpdateProgress(String key, double progress) {
+    final now = DateTime.now();
+    final lastTime = _lastProgressUpdateMap[key];
+    final lastValue = _lastProgressValueMap[key];
+    final valueChanged =
+        lastValue == null || (progress - lastValue).abs() >= 0.01;
+    final timeElapsed =
+        lastTime == null || now.difference(lastTime).inMilliseconds >= 200;
+    final forceUpdate = progress >= 1.0;
+
+    if ((valueChanged && timeElapsed) || forceUpdate) {
+      _lastProgressUpdateMap[key] = now;
+      _lastProgressValueMap[key] = progress;
+      return true;
+    }
+    return false;
+  }
+
+  void _updateDecryptProgress(DatabaseFile file, double progress) {
+    if (!_shouldUpdateProgress(file.originalPath, progress)) return;
+    file.decryptProgress = progress;
+    _getProgressNotifier(file).value = progress;
+  }
+
+  void _switchSection(String section) {
+    if (_currentSection == section) return;
+    setState(() {
+      _currentSection = section;
+    });
+    _sectionNavigatorKey.currentState
+        ?.pushReplacementNamed('/$section');
+  }
+
+  Widget _buildSectionSwitcher() {
+    final surfaceTone = Theme.of(context)
+        .colorScheme
+        .surface
+        .withValues(alpha: 0.7);
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: surfaceTone,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Tab栏
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border(
-                bottom: BorderSide(color: Colors.grey.shade200, width: 1),
+          _SectionTab(
+            label: '数据库',
+            isSelected: _currentSection == 'database',
+            onTap: () => _switchSection('database'),
+            surfaceColor: _surfaceColor,
+            borderColor: _borderColor,
+            accentColor: _primaryColor,
+          ),
+          _SectionTab(
+            label: '图片',
+            isSelected: _currentSection == 'images',
+            onTap: () => _switchSection('images'),
+            surfaceColor: _surfaceColor,
+            borderColor: _borderColor,
+            accentColor: _primaryColor,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: _surfaceColor,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _borderColor),
               ),
+              child: Icon(icon, size: 40, color: Colors.grey.shade500),
             ),
-            child: TabBar(
-              controller: _tabController,
-              tabs: const [
-                Tab(text: '数据库文件'),
-                Tab(text: '图片文件'),
-              ],
-              labelColor: Theme.of(context).colorScheme.primary,
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: Theme.of(context).colorScheme.primary,
-              indicatorWeight: 3,
+            const SizedBox(height: 20),
+            Text(
+              title,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade800,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.grey.shade600,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBanner({
+    required String message,
+    required bool success,
+  }) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: success
+            ? _primaryColor.withValues(alpha: 0.08)
+            : Colors.red.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: success
+              ? _primaryColor.withValues(alpha: 0.25)
+              : Colors.red.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Row(
+        children: [
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            child: Icon(
+              success ? Icons.check_circle_rounded : Icons.error_rounded,
+              key: ValueKey<bool>(success),
+              color: success ? _primaryColor : Colors.red,
+              size: 18,
             ),
           ),
-
-          // Tab内容区域
+          const SizedBox(width: 10),
           Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                // 数据库文件页面
-                _buildDatabaseTab(),
-                // 图片文件页面
-                _buildImageTab(),
-              ],
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) {
+                final slide = Tween<Offset>(
+                  begin: const Offset(0, 0.2),
+                  end: Offset.zero,
+                ).animate(animation);
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(position: slide, child: child),
+                );
+              },
+              child: Text(
+                message,
+                key: ValueKey<String>(message),
+                style: TextStyle(
+                  color: success ? _primaryColor : Colors.red,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ],
@@ -1888,41 +2031,327 @@ class _DataManagementPageState extends State<DataManagementPage>
     );
   }
 
-  /// 构建数据库文件Tab页面
-  Widget _buildDatabaseTab() {
-    return Column(
-      children: [
-        // 操作按钮栏
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border(
-              bottom: BorderSide(color: Colors.grey.shade200, width: 1),
+  Widget _buildAnimatedStatus(Widget child, {required String keyValue}) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        return SizeTransition(
+          sizeFactor: animation,
+          axisAlignment: -1,
+          child: FadeTransition(opacity: animation, child: child),
+        );
+      },
+      child: KeyedSubtree(key: ValueKey<String>(keyValue), child: child),
+    );
+  }
+
+  Widget _buildRitualProgressCard({
+    required String title,
+    required String message,
+    required double progress,
+    required int completed,
+    required int total,
+  }) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _primaryColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _primaryColor.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      switchInCurve: Curves.easeOut,
+                      switchOutCurve: Curves.easeIn,
+                      child: Text(
+                        title,
+                        key: ValueKey<String>('title-$title'),
+                        style: TextStyle(
+                          color: _primaryColor,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      switchInCurve: Curves.easeOut,
+                      switchOutCurve: Curves.easeIn,
+                      transitionBuilder: (child, animation) {
+                        final slide = Tween<Offset>(
+                          begin: const Offset(0, 0.15),
+                          end: Offset.zero,
+                        ).animate(animation);
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(position: slide, child: child),
+                        );
+                      },
+                      child: Text(
+                        message,
+                        key: ValueKey<String>('message-$message'),
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 12,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                '${(progress * 100).toStringAsFixed(0)}%',
+                style: TextStyle(
+                  color: _primaryColor,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: _SmoothLinearProgress(
+              value: progress,
+              minHeight: 6,
+              backgroundColor: _primaryColor.withValues(alpha: 0.15),
+              valueColor: _primaryColor,
+              duration: const Duration(milliseconds: 520),
             ),
           ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '$completed / $total',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 12,
+                ),
+              ),
+              Text(
+                '剩余 ${total - completed}',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 42,
+                              height: 42,
+                              child: Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: _primaryColor.withValues(
+                                    alpha: 0.1,
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Icon(
+                                  _currentSection == 'database'
+                                      ? Icons.storage_rounded
+                                      : Icons.photo_library_outlined,
+                                  size: 22,
+                                  color: _primaryColor,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            SizedBox(
+                              height: 42,
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: AnimatedSwitcher(
+                                  duration: const Duration(
+                                    milliseconds: 160,
+                                  ),
+                                  switchInCurve: Curves.easeOutCubic,
+                                  switchOutCurve: Curves.easeInCubic,
+                                  transitionBuilder: (child, animation) {
+                                    final slide = Tween<Offset>(
+                                      begin: const Offset(0, 0.1),
+                                      end: Offset.zero,
+                                    ).animate(animation);
+                                    return FadeTransition(
+                                      opacity: animation,
+                                      child: SlideTransition(
+                                        position: slide,
+                                        child: child,
+                                      ),
+                                    );
+                                  },
+                                  child: Text(
+                                    _currentSection == 'database'
+                                        ? '数据库解密'
+                                        : '图片解密',
+                                    key: ValueKey<String>(
+                                      'title-$_currentSection',
+                                    ),
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineSmall
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 22,
+                                          letterSpacing: -0.5,
+                                        ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  _buildSectionSwitcher(),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: _borderColor),
+            Expanded(
+              child: Navigator(
+                key: _sectionNavigatorKey,
+                initialRoute: '/database',
+                onGenerateRoute: (settings) {
+                  switch (settings.name) {
+                    case '/images':
+                      return PageRouteBuilder(
+                        settings: settings,
+                        transitionDuration: const Duration(milliseconds: 220),
+                        reverseTransitionDuration: Duration.zero,
+                        pageBuilder: (_, __, ___) => _buildImageSection(),
+                        transitionsBuilder: (_, animation, __, child) {
+                          return FadeTransition(
+                            opacity: CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeInOut,
+                            ),
+                            child: ColoredBox(
+                              color:
+                                  Theme.of(context).scaffoldBackgroundColor,
+                              child: ClipRect(child: child),
+                            ),
+                          );
+                        },
+                      );
+                    case '/database':
+                    default:
+                      return PageRouteBuilder(
+                        settings: settings,
+                        transitionDuration: const Duration(milliseconds: 220),
+                        reverseTransitionDuration: Duration.zero,
+                        pageBuilder: (_, __, ___) => _buildDatabaseSection(),
+                        transitionsBuilder: (_, animation, __, child) {
+                          return FadeTransition(
+                            opacity: CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeInOut,
+                            ),
+                            child: ColoredBox(
+                              color:
+                                  Theme.of(context).scaffoldBackgroundColor,
+                              child: ClipRect(child: child),
+                            ),
+                          );
+                        },
+                      );
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 构建数据库解密页面
+  Widget _buildDatabaseSection() {
+    final needsUpdateCount =
+        _databaseFiles.where((f) => f.needsUpdate).length;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
           child: Row(
             children: [
-              const Spacer(),
-              // 增量更新按钮
-              if (_databaseFiles.any((file) => file.needsUpdate))
+              Expanded(
+                child: Text(
+                  _isLoading
+                      ? '正在扫描数据库...'
+                      : '已找到 ${_databaseFiles.length} 个数据库',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (needsUpdateCount > 0)
                 Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: OutlinedButton.icon(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: ElevatedButton.icon(
                     onPressed: (_isLoading || _isDecrypting)
                         ? null
                         : _updateChanged,
-                    icon: const Icon(Icons.update),
-                    label: Text(
-                      '增量更新 (${_databaseFiles.where((f) => f.needsUpdate).length})',
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.orange,
-                      side: BorderSide(color: Colors.orange.shade400),
+                    icon: const Icon(Icons.update, size: 18),
+                    label: Text('增量更新 ($needsUpdateCount)'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _updateColor,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                     ),
                   ),
                 ),
-              // 批量解密按钮
               ElevatedButton.icon(
                 onPressed: (_isLoading || _isDecrypting)
                     ? null
@@ -1936,239 +2365,127 @@ class _DataManagementPageState extends State<DataManagementPage>
                           value: _totalFiles > 0
                               ? _completedFiles / _totalFiles
                               : null,
+                          color: Colors.white,
                         ),
                       )
-                    : const Icon(Icons.play_arrow),
-                label: Text(_isDecrypting ? '正在解密...' : '批量解密'),
+                    : const Icon(Icons.lock_open_rounded, size: 18),
+                label: Text(_isDecrypting ? '解密中...' : '批量解密'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  backgroundColor: _primaryColor,
                   foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 12,
+                  ),
                 ),
               ),
             ],
           ),
         ),
-
-        // 列表区域
         Expanded(
           child: _isLoading && _databaseFiles.isEmpty
               ? const Center(child: CircularProgressIndicator())
               : _databaseFiles.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.folder_open,
-                        size: 64,
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.onSurface.withValues(alpha: 0.3),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '未找到数据库文件',
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withValues(alpha: 0.6),
+                  ? _buildEmptyState(
+                      icon: Icons.folder_open_rounded,
+                      title: '未找到数据库文件',
+                      subtitle: '请检查微信数据目录设置是否正确',
+                    )
+                  : Column(
+                      children: [
+                        _buildAnimatedStatus(
+                          _isDecrypting
+                              ? _buildRitualProgressCard(
+                                  title: '正在解密',
+                                  message: _currentDecryptingFile,
+                                  progress: _totalFiles > 0
+                                      ? _completedFiles / _totalFiles
+                                      : 0,
+                                  completed: _completedFiles,
+                                  total: _totalFiles,
+                                )
+                              : const SizedBox.shrink(),
+                          keyValue: _isDecrypting ? 'db-progress' : 'db-empty',
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '请确保微信数据目录存在',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withValues(alpha: 0.4),
+                        _buildAnimatedStatus(
+                          _statusMessage != null
+                              ? _buildStatusBanner(
+                                  message: _statusMessage!,
+                                  success: _isSuccess,
+                                )
+                              : const SizedBox.shrink(),
+                          keyValue: _statusMessage == null
+                              ? 'db-status-empty'
+                              : 'db-status-${_statusMessage!}',
                         ),
-                      ),
-                    ],
-                  ),
-                )
-              : Column(
-                  children: [
-                    // 解密进度显示
-                    if (_isDecrypting)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        margin: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.blue, width: 1),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Text(
-                                    '正在解密: $_currentDecryptingFile',
-                                    style: TextStyle(
-                                      color: Colors.blue.shade700,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                        Expanded(
+                          child: ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(
+                              20,
+                              8,
+                              20,
+                              20,
                             ),
-                            const SizedBox(height: 12),
-                            // 文件级进度
-                            LinearProgressIndicator(
-                              value: _totalFiles > 0
-                                  ? _completedFiles / _totalFiles
-                                  : 0,
-                              backgroundColor: Colors.blue.shade100,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.blue.shade600,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              '文件进度: $_completedFiles / $_totalFiles',
-                              style: TextStyle(
-                                color: Colors.blue.shade600,
-                                fontSize: 12,
-                              ),
-                            ),
-                            // 页面级进度（如果有）
-                            if (_totalFilePages > 0) ...[
-                              const SizedBox(height: 8),
-                              LinearProgressIndicator(
-                                value: _currentFilePages / _totalFilePages,
-                                backgroundColor: Colors.blue.shade50,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.blue.shade400,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '页面进度: $_currentFilePages / $_totalFilePages',
-                                style: TextStyle(
-                                  color: Colors.blue.shade500,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
-                            // Isolate状态提示
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Text(
-                                  '解密中，中途卡住是正常现象，请不要离开此页面',
-                                  style: TextStyle(
-                                    color: Colors.green.shade600,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-
-                    // 状态消息
-                    if (_statusMessage != null)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        margin: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: _isSuccess
-                              ? Colors.green.withValues(alpha: 0.1)
-                              : Colors.red.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: _isSuccess ? Colors.green : Colors.red,
-                            width: 1,
+                            itemCount: _databaseFiles.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (context, index) {
+                              final file = _databaseFiles[index];
+                              return _buildFileCard(file);
+                            },
                           ),
                         ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              _isSuccess ? Icons.check_circle : Icons.error,
-                              color: _isSuccess ? Colors.green : Colors.red,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                _statusMessage!,
-                                style: TextStyle(
-                                  color: _isSuccess ? Colors.green : Colors.red,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                    // 文件列表
-                    Expanded(
-                      child: ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _databaseFiles.length,
-                        itemBuilder: (context, index) {
-                          final file = _databaseFiles[index];
-                          return _buildFileCard(file);
-                        },
-                      ),
+                      ],
                     ),
-                  ],
-                ),
         ),
       ],
     );
   }
 
   Widget _buildFileCard(DatabaseFile file) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1),
+    final progressNotifier = _getProgressNotifier(file);
+    return Container(
+      decoration: BoxDecoration(
+        color: _surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: file.isDecrypted
+              ? _primaryColor.withValues(alpha: 0.2)
+              : _borderColor,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            // 文件图标
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: file.isDecrypted
-                    ? Colors.green.withValues(alpha: 0.1)
-                    : Theme.of(
-                        context,
-                      ).colorScheme.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
+                    ? _primaryColor.withValues(alpha: 0.12)
+                    : Colors.grey.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
-                file.isDecrypted ? Icons.check_circle : Icons.storage,
-                color: file.isDecrypted
-                    ? Colors.green
-                    : Theme.of(context).colorScheme.primary,
-                size: 24,
+                file.isDecrypted
+                    ? Icons.check_circle_rounded
+                    : Icons.storage_rounded,
+                color: file.isDecrypted ? _primaryColor : Colors.grey.shade600,
+                size: 22,
               ),
             ),
             const SizedBox(width: 16),
-
-            // 文件信息
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2176,64 +2493,86 @@ class _DataManagementPageState extends State<DataManagementPage>
                   Text(
                     file.fileName,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                          fontWeight: FontWeight.w600,
+                        ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     '账号: ${file.wxidName}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurface.withValues(alpha: 0.6),
-                    ),
+                          color: Colors.grey.shade600,
+                        ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     '大小: ${_formatFileSize(file.fileSize)}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurface.withValues(alpha: 0.6),
-                    ),
+                          color: Colors.grey.shade600,
+                        ),
                   ),
-                  if (file.decryptProgress > 0 && file.decryptProgress < 1)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: LinearProgressIndicator(
-                        value: file.decryptProgress,
-                        backgroundColor: Colors.grey.shade200,
-                      ),
-                    ),
+                  ValueListenableBuilder<double>(
+                    valueListenable: progressNotifier,
+                    builder: (context, progress, _) {
+                      if (progress <= 0 || progress >= 1) {
+                        return const SizedBox.shrink();
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(6),
+                                child: _SmoothLinearProgress(
+                                  value: progress,
+                                  minHeight: 5,
+                                  backgroundColor:
+                                      _primaryColor.withValues(alpha: 0.15),
+                                  valueColor: _primaryColor,
+                                  duration: const Duration(milliseconds: 420),
+                                ),
+                              ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '解密中 ${(progress * 100).toStringAsFixed(0)}%',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: _primaryColor,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
-
-            // 状态和操作按钮
             Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
+                        horizontal: 10,
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
                         color: file.isDecrypted
-                            ? Colors.green.withValues(alpha: 0.1)
-                            : Colors.orange.withValues(alpha: 0.1),
+                            ? _primaryColor.withValues(alpha: 0.12)
+                            : _tertiaryColor.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         file.isDecrypted ? '已解密' : '未解密',
                         style: TextStyle(
-                          color: file.isDecrypted
-                              ? Colors.green
-                              : Colors.orange,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
+                          color:
+                              file.isDecrypted ? _primaryColor : _tertiaryColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -2245,8 +2584,11 @@ class _DataManagementPageState extends State<DataManagementPage>
                           vertical: 4,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.blue.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
+                          color: _updateColor.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: _updateColor.withValues(alpha: 0.5),
+                          ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -2254,15 +2596,15 @@ class _DataManagementPageState extends State<DataManagementPage>
                             Icon(
                               Icons.update,
                               size: 12,
-                              color: Colors.blue.shade700,
+                              color: _updateColor,
                             ),
                             const SizedBox(width: 4),
                             Text(
                               '有更新',
                               style: TextStyle(
-                                color: Colors.blue.shade700,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
+                                color: _updateColor,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
                               ),
                             ),
                           ],
@@ -2271,25 +2613,35 @@ class _DataManagementPageState extends State<DataManagementPage>
                     ],
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 if (!file.isDecrypted)
-                  OutlinedButton(
-                    onPressed:
-                        (_isLoading ||
-                            (_isDecrypting && file.decryptProgress == 0))
-                        ? null
-                        : () => _decryptSingle(file),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                    ),
-                    child: Text(
-                      _isDecrypting && file.decryptProgress > 0
-                          ? '${(file.decryptProgress * 100).toStringAsFixed(0)}%'
-                          : '解密',
-                    ),
+                  ValueListenableBuilder<double>(
+                    valueListenable: progressNotifier,
+                    builder: (context, progress, _) {
+                      final isBusy = _isDecrypting && progress > 0;
+                      return OutlinedButton(
+                        onPressed:
+                            (_isLoading || (_isDecrypting && progress == 0))
+                                ? null
+                                : () => _decryptSingle(file),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _primaryColor,
+                          side: BorderSide(
+                            color: _primaryColor.withValues(alpha: 0.4),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                        ),
+                        child: Text(isBusy
+                            ? '${(progress * 100).toStringAsFixed(0)}%'
+                            : '解密'),
+                      );
+                    },
                   ),
               ],
             ),
@@ -2299,204 +2651,95 @@ class _DataManagementPageState extends State<DataManagementPage>
     );
   }
 
-  /// 构建图片文件Tab页面（现代化UI）
-  Widget _buildImageTab() {
+  /// 构建图片解密页面
+  Widget _buildImageSection() {
     return Column(
       children: [
-        // 顶部信息和操作栏
-        Container(
-          margin: const EdgeInsets.all(16),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
-                Theme.of(context).colorScheme.primary.withValues(alpha: 0.02),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: Theme.of(
-                context,
-              ).colorScheme.primary.withValues(alpha: 0.1),
-              width: 1,
-            ),
-          ),
-          child: Column(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+          child: Row(
             children: [
-              // 统计信息
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.photo_library_outlined,
-                      color: Theme.of(context).colorScheme.primary,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${_imageFiles.length}',
-                          style: Theme.of(context).textTheme.headlineSmall
-                              ?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                        ),
-                        Text(
-                          '图片文件',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: Colors.grey.shade600),
-                        ),
-                        const SizedBox(height: 4),
-                        // 显示质量统计
-                        FutureBuilder<String>(
-                          future: _getImageQualityStats(),
-                          builder: (context, snapshot) {
-                            if (snapshot.hasData) {
-                              return Text(
-                                snapshot.data!,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.grey.shade500,
-                                ),
-                              );
-                            }
-                            return const SizedBox.shrink();
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  // 操作按钮
-                  Row(
-                    children: [
-                      // 刷新按钮
-                      Material(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        child: InkWell(
-                          onTap: (_isLoadingImages || _isDecryptingImages)
-                              ? null
-                              : _loadImageFiles,
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: Colors.grey.shade300,
-                                width: 1,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_isLoadingImages)
-                                  SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.primary,
-                                    ),
-                                  )
-                                else
-                                  Icon(
-                                    Icons.refresh_rounded,
-                                    size: 18,
-                                    color: Colors.grey.shade700,
-                                  ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  _isLoadingImages ? '扫描中' : '刷新',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade700,
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+              Expanded(
+                child: FutureBuilder<String>(
+                  future: _getImageQualityStats(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const SizedBox.shrink();
+                    }
+                    return Text(
+                      snapshot.data!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w500,
                       ),
-                      const SizedBox(width: 12),
-                      // 批量解密按钮
-                      Material(
-                        color: Theme.of(context).colorScheme.primary,
-                        borderRadius: BorderRadius.circular(12),
-                        elevation: 0,
-                        child: InkWell(
-                          onTap:
-                              (_isLoadingImages ||
-                                  _isDecryptingImages ||
-                                  _imageFiles.isEmpty)
-                              ? null
-                              : _decryptAllImages,
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 12,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (_isDecryptingImages)
-                                  SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                      value: _totalImageFiles > 0
-                                          ? _completedImageFiles /
-                                                _totalImageFiles
-                                          : null,
-                                    ),
-                                  )
-                                else
-                                  const Icon(
-                                    Icons.lock_open_rounded,
-                                    size: 18,
-                                    color: Colors.white,
-                                  ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  _isDecryptingImages ? '解密中' : '批量解密',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                    );
+                  },
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: (_isLoadingImages || _isDecryptingImages)
+                    ? null
+                    : _loadImageFiles,
+                icon: _isLoadingImages
+                    ? SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: _primaryColor,
                         ),
-                      ),
-                    ],
+                      )
+                    : const Icon(Icons.refresh_rounded, size: 18),
+                label: Text(_isLoadingImages ? '扫描中' : '刷新'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _primaryColor,
+                  side: BorderSide(
+                    color: _primaryColor.withValues(alpha: 0.4),
                   ),
-                ],
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              ElevatedButton.icon(
+                onPressed:
+                    (_isLoadingImages ||
+                            _isDecryptingImages ||
+                            _imageFiles.isEmpty)
+                        ? null
+                        : _decryptAllImages,
+                icon: _isDecryptingImages
+                    ? SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                          value: _totalImageFiles > 0
+                              ? _completedImageFiles / _totalImageFiles
+                              : null,
+                        ),
+                      )
+                    : const Icon(Icons.lock_open_rounded, size: 18),
+                label: Text(_isDecryptingImages ? '解密中...' : '批量解密'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _primaryColor,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 12,
+                  ),
+                ),
               ),
             ],
           ),
@@ -2514,7 +2757,7 @@ class _DataManagementPageState extends State<DataManagementPage>
                         height: 60,
                         child: CircularProgressIndicator(
                           strokeWidth: 4,
-                          color: Theme.of(context).colorScheme.primary,
+                          color: _primaryColor,
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -2522,7 +2765,7 @@ class _DataManagementPageState extends State<DataManagementPage>
                         '正在扫描图片文件...',
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(
-                              color: Theme.of(context).colorScheme.primary,
+                              color: _primaryColor,
                               fontWeight: FontWeight.w500,
                             ),
                       ),
@@ -2532,7 +2775,7 @@ class _DataManagementPageState extends State<DataManagementPage>
                           '已找到 ${_imageFiles.length} 个文件',
                           style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(
-                                color: Theme.of(context).colorScheme.primary,
+                                color: _primaryColor,
                                 fontWeight: FontWeight.w500,
                               ),
                         ),
@@ -2554,31 +2797,35 @@ class _DataManagementPageState extends State<DataManagementPage>
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.image_not_supported,
-                          size: 64,
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withValues(alpha: 0.3),
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: _surfaceColor,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: _borderColor),
+                          ),
+                          child: Icon(
+                            Icons.image_not_supported,
+                            size: 36,
+                            color: Colors.grey.shade500,
+                          ),
                         ),
                         const SizedBox(height: 16),
                         Text(
                           '未找到图片文件',
                           style: Theme.of(context).textTheme.titleLarge
                               ?.copyWith(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurface.withValues(alpha: 0.6),
+                                color: Colors.grey.shade800,
                               ),
                         ),
                         const SizedBox(height: 16),
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: Colors.blue.withValues(alpha: 0.1),
+                            color: _surfaceColor,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: Colors.blue.withValues(alpha: 0.3),
+                              color: _borderColor,
                             ),
                           ),
                           child: Column(
@@ -2589,7 +2836,7 @@ class _DataManagementPageState extends State<DataManagementPage>
                                   Icon(
                                     Icons.help_outline,
                                     size: 20,
-                                    color: Colors.blue.shade700,
+                                    color: _primaryColor,
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
@@ -2598,7 +2845,7 @@ class _DataManagementPageState extends State<DataManagementPage>
                                         .textTheme
                                         .titleSmall
                                         ?.copyWith(
-                                          color: Colors.blue.shade700,
+                                          color: _primaryColor,
                                           fontWeight: FontWeight.bold,
                                         ),
                                   ),
@@ -2612,7 +2859,7 @@ class _DataManagementPageState extends State<DataManagementPage>
                                 '💡 建议：点击刷新按钮重新扫描，或在设置中重新选择微信数据目录',
                                 style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(
-                                      color: Colors.blue.shade600,
+                                      color: Colors.grey.shade600,
                                       height: 1.5,
                                     ),
                               ),
@@ -2637,180 +2884,32 @@ class _DataManagementPageState extends State<DataManagementPage>
                 )
               : Column(
                   children: [
-                    // 解密进度显示
-                    if (_isDecryptingImages)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(20),
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Theme.of(
-                                context,
-                              ).colorScheme.primary.withValues(alpha: 0.08),
-                              Theme.of(
-                                context,
-                              ).colorScheme.primary.withValues(alpha: 0.04),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primary.withValues(alpha: 0.2),
-                            width: 1,
-                          ),
-                        ),
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.primary
-                                        .withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.5,
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.primary,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        '正在解密图片',
-                                        style: TextStyle(
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.primary,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 15,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        _currentDecryptingImage,
-                                        style: TextStyle(
-                                          color: Colors.grey.shade600,
-                                          fontSize: 12,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Text(
-                                  '${((_completedImageFiles / _totalImageFiles) * 100).toStringAsFixed(0)}%',
-                                  style: TextStyle(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.primary,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: LinearProgressIndicator(
-                                value: _totalImageFiles > 0
-                                    ? _completedImageFiles / _totalImageFiles
-                                    : 0,
-                                minHeight: 6,
-                                backgroundColor: Theme.of(
-                                  context,
-                                ).colorScheme.primary.withValues(alpha: 0.15),
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Theme.of(context).colorScheme.primary,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  '$_completedImageFiles / $_totalImageFiles 个文件',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                Text(
-                                  '剩余 ${_totalImageFiles - _completedImageFiles} 个',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-
-                    // 状态消息
-                    if (_imageStatusMessage != null)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        margin: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: _isImageSuccess
-                              ? Colors.green.withValues(alpha: 0.1)
-                              : Colors.red.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: _isImageSuccess ? Colors.green : Colors.red,
-                            width: 1,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              _isImageSuccess
-                                  ? Icons.check_circle
-                                  : Icons.error,
-                              color: _isImageSuccess
-                                  ? Colors.green
-                                  : Colors.red,
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                _imageStatusMessage!,
-                                style: TextStyle(
-                                  color: _isImageSuccess
-                                      ? Colors.green
-                                      : Colors.red,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    _buildAnimatedStatus(
+                      _isDecryptingImages
+                          ? _buildRitualProgressCard(
+                              title: '正在解密图片',
+                              message: _currentDecryptingImage,
+                              progress: _totalImageFiles > 0
+                                  ? _completedImageFiles / _totalImageFiles
+                                  : 0,
+                              completed: _completedImageFiles,
+                              total: _totalImageFiles,
+                            )
+                          : const SizedBox.shrink(),
+                      keyValue:
+                          _isDecryptingImages ? 'img-progress' : 'img-empty',
+                    ),
+                    _buildAnimatedStatus(
+                      _imageStatusMessage != null
+                          ? _buildStatusBanner(
+                              message: _imageStatusMessage!,
+                              success: _isImageSuccess,
+                            )
+                          : const SizedBox.shrink(),
+                      keyValue: _imageStatusMessage == null
+                          ? 'img-status-empty'
+                          : 'img-status-${_imageStatusMessage!}',
+                    ),
 
                     // 图片列表
                     Expanded(child: _buildImageList()),
@@ -2858,9 +2957,9 @@ class _DataManagementPageState extends State<DataManagementPage>
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: Colors.grey.shade50,
+            color: _surfaceColor,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade200),
+            border: Border.all(color: _borderColor),
           ),
           child: Column(
             children: [
@@ -2879,9 +2978,12 @@ class _DataManagementPageState extends State<DataManagementPage>
                                 _showOnlyUndecrypted = value;
                               });
                             },
-                            activeThumbColor: Theme.of(
-                              context,
-                            ).colorScheme.primary,
+                            activeColor: _primaryColor,
+                            activeTrackColor:
+                                _primaryColor.withValues(alpha: 0.25),
+                            inactiveThumbColor: Colors.grey.shade400,
+                            inactiveTrackColor:
+                                Colors.grey.shade300.withValues(alpha: 0.6),
                           ),
                         ),
                         const SizedBox(width: 4),
@@ -2903,17 +3005,16 @@ class _DataManagementPageState extends State<DataManagementPage>
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.primary.withValues(alpha: 0.1),
+                      color: _surfaceColor,
                       borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _borderColor),
                     ),
                     child: Text(
                       '${displayFiles.length}/${filteredFiles.length}',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: Theme.of(context).colorScheme.primary,
+                        color: _primaryColor,
                       ),
                     ),
                   ),
@@ -2939,8 +3040,8 @@ class _DataManagementPageState extends State<DataManagementPage>
                       padding: const EdgeInsets.only(right: 8),
                       child: Material(
                         color: isSelected
-                            ? Theme.of(context).colorScheme.primary
-                            : Colors.white,
+                            ? _primaryColor.withValues(alpha: 0.12)
+                            : _surfaceColor,
                         borderRadius: BorderRadius.circular(8),
                         child: InkWell(
                           onTap: () {
@@ -2958,8 +3059,8 @@ class _DataManagementPageState extends State<DataManagementPage>
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
                                 color: isSelected
-                                    ? Theme.of(context).colorScheme.primary
-                                    : Colors.grey.shade300,
+                                    ? _primaryColor.withValues(alpha: 0.5)
+                                    : _borderColor,
                                 width: 1,
                               ),
                             ),
@@ -2971,9 +3072,9 @@ class _DataManagementPageState extends State<DataManagementPage>
                                   : '缩略图',
                               style: TextStyle(
                                 fontSize: 12,
-                                fontWeight: FontWeight.w500,
+                                fontWeight: FontWeight.w600,
                                 color: isSelected
-                                    ? Colors.white
+                                    ? _primaryColor
                                     : Colors.grey.shade700,
                               ),
                             ),
@@ -3010,6 +3111,16 @@ class _DataManagementPageState extends State<DataManagementPage>
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: _borderColor),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide(color: _primaryColor),
+                        ),
+                        filled: true,
+                        fillColor: _surfaceColor,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 12,
                           vertical: 10,
@@ -3034,21 +3145,16 @@ class _DataManagementPageState extends State<DataManagementPage>
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Colors.orange.shade50,
-                  Colors.orange.shade50.withValues(alpha: 0.5),
-                ],
-              ),
+              color: _surfaceColor,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.orange.shade200),
+              border: Border.all(color: _borderColor),
             ),
             child: Row(
               children: [
                 Icon(
                   Icons.info_outline,
                   size: 20,
-                  color: Colors.orange.shade700,
+                  color: _primaryColor,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -3056,13 +3162,13 @@ class _DataManagementPageState extends State<DataManagementPage>
                     '显示前 $_displayLimit 条，共 ${filteredFiles.length} 条',
                     style: TextStyle(
                       fontSize: 13,
-                      color: Colors.orange.shade800,
+                      color: Colors.grey.shade600,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
                 Material(
-                  color: Colors.orange.shade600,
+                  color: _primaryColor,
                   borderRadius: BorderRadius.circular(8),
                   child: InkWell(
                     onTap: () {
@@ -3076,7 +3182,7 @@ class _DataManagementPageState extends State<DataManagementPage>
                         horizontal: 16,
                         vertical: 8,
                       ),
-                      child: Text(
+                      child: const Text(
                         '加载更多',
                         style: TextStyle(
                           color: Colors.white,
@@ -3101,15 +3207,16 @@ class _DataManagementPageState extends State<DataManagementPage>
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          shape: BoxShape.circle,
+                          color: _surfaceColor,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: _borderColor),
                         ),
                         child: Icon(
                           _showOnlyUndecrypted
                               ? Icons.done_all_rounded
                               : Icons.image_search_rounded,
                           size: 48,
-                          color: Colors.grey.shade400,
+                          color: Colors.grey.shade500,
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -3118,7 +3225,7 @@ class _DataManagementPageState extends State<DataManagementPage>
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: Colors.grey.shade700,
+                          color: Colors.grey.shade800,
                         ),
                       ),
                       const SizedBox(height: 8),
@@ -3130,7 +3237,7 @@ class _DataManagementPageState extends State<DataManagementPage>
                             : '点击刷新按钮重新扫描，或检查微信数据目录是否正确',
                         style: TextStyle(
                           fontSize: 13,
-                          color: Colors.grey.shade500,
+                          color: Colors.grey.shade600,
                         ),
                       ),
                     ],
@@ -3158,12 +3265,12 @@ class _DataManagementPageState extends State<DataManagementPage>
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        color: _surfaceColor,
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: imageFile.isDecrypted
-              ? Colors.green.withValues(alpha: 0.2)
-              : Colors.grey.shade200,
+              ? _primaryColor.withValues(alpha: 0.2)
+              : _borderColor,
           width: 1,
         ),
         boxShadow: [
@@ -3192,16 +3299,16 @@ class _DataManagementPageState extends State<DataManagementPage>
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: imageFile.isDecrypted
-                        ? Colors.green.withValues(alpha: 0.1)
+                        ? _primaryColor.withValues(alpha: 0.12)
                         : Colors.grey.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
                     imageFile.isDecrypted
                         ? Icons.check_circle_rounded
                         : Icons.image_outlined,
                     color: imageFile.isDecrypted
-                        ? Colors.green.shade600
+                        ? _primaryColor
                         : Colors.grey.shade500,
                     size: 20,
                   ),
@@ -3223,9 +3330,9 @@ class _DataManagementPageState extends State<DataManagementPage>
                             ),
                             decoration: BoxDecoration(
                               color: imageFile.imageQuality == 'original'
-                                  ? Colors.blue.withValues(alpha: 0.1)
-                                  : Colors.orange.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(4),
+                                  ? _primaryColor.withValues(alpha: 0.12)
+                                  : _tertiaryColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
                               imageFile.imageQuality == 'original'
@@ -3235,8 +3342,8 @@ class _DataManagementPageState extends State<DataManagementPage>
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
                                 color: imageFile.imageQuality == 'original'
-                                    ? Colors.blue.shade700
-                                    : Colors.orange.shade700,
+                                    ? _primaryColor
+                                    : _tertiaryColor,
                               ),
                             ),
                           ),
@@ -3276,15 +3383,15 @@ class _DataManagementPageState extends State<DataManagementPage>
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.green.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
+                      color: _primaryColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
                       '已解密',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: Colors.green.shade700,
+                        color: _primaryColor,
                       ),
                     ),
                   )
@@ -3299,6 +3406,139 @@ class _DataManagementPageState extends State<DataManagementPage>
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SectionTab extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+  final Color surfaceColor;
+  final Color borderColor;
+  final Color accentColor;
+
+  const _SectionTab({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+    required this.surfaceColor,
+    required this.borderColor,
+    required this.accentColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? surfaceColor : null,
+          borderRadius: BorderRadius.circular(12),
+          border: isSelected
+              ? Border.all(
+                  color: borderColor,
+                )
+              : null,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: isSelected
+                ? accentColor
+                : Colors.grey.shade600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SmoothLinearProgress extends StatefulWidget {
+  final double value;
+  final double minHeight;
+  final Color backgroundColor;
+  final Color valueColor;
+  final Duration duration;
+  final Curve curve;
+
+  const _SmoothLinearProgress({
+    required this.value,
+    required this.minHeight,
+    required this.backgroundColor,
+    required this.valueColor,
+    this.duration = const Duration(milliseconds: 420),
+    // ignore: unused_element_parameter
+    this.curve = Curves.easeOutCubic,
+  });
+
+  @override
+  State<_SmoothLinearProgress> createState() => _SmoothLinearProgressState();
+}
+
+class _SmoothLinearProgressState extends State<_SmoothLinearProgress>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late Animation<double> _animation;
+  late double _currentValue;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentValue = _clamp(widget.value);
+    _controller = AnimationController(
+      vsync: this,
+      duration: widget.duration,
+    );
+    _animation = AlwaysStoppedAnimation<double>(_currentValue);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SmoothLinearProgress oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.duration != oldWidget.duration) {
+      _controller.duration = widget.duration;
+    }
+    final nextValue = _clamp(widget.value);
+    if (nextValue != _currentValue) {
+      _animateTo(nextValue);
+    }
+  }
+
+  double _clamp(double value) => value.clamp(0.0, 1.0);
+
+  void _animateTo(double target) {
+    _controller.stop();
+    _animation = Tween<double>(
+      begin: _currentValue,
+      end: target,
+    ).animate(
+      CurvedAnimation(parent: _controller, curve: widget.curve),
+    )..addListener(() {
+        setState(() {
+          _currentValue = _animation.value;
+        });
+      });
+    _controller.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LinearProgressIndicator(
+      value: _currentValue,
+      minHeight: widget.minHeight,
+      backgroundColor: widget.backgroundColor,
+      valueColor: AlwaysStoppedAnimation<Color>(widget.valueColor),
     );
   }
 }

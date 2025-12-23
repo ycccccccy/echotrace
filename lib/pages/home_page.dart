@@ -13,8 +13,52 @@ import 'chat_export_page.dart';
 import 'group_chat_analysis_page.dart';
 
 /// 应用主页面，包含侧边栏和内容区域
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  bool _safeModeDialogShown = false;
+
+  void _maybeShowSafeModeDialog(BuildContext context, AppState appState) {
+    if (_safeModeDialogShown || !appState.needsSafeModePrompt) return;
+    _safeModeDialogShown = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text('检测到异常退出'),
+            content: const Text(
+              '上一次启动可能异常中断。是否使用安全模式启动？\n'
+              '安全模式将跳过自动连接数据库/解密流程，方便排查问题。',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  Navigator.of(dialogContext).pop();
+                  await appState.resolveSafeModeChoice(useSafeMode: false);
+                },
+                child: const Text('正常启动'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  Navigator.of(dialogContext).pop();
+                  await appState.resolveSafeModeChoice(useSafeMode: true);
+                },
+                child: const Text('安全模式'),
+              ),
+            ],
+          );
+        },
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +75,8 @@ class HomePage extends StatelessWidget {
                   color: Theme.of(context).scaffoldBackgroundColor,
                   child: Consumer<AppState>(
                     builder: (context, appState, child) {
+                      _maybeShowSafeModeDialog(context, appState);
+
                       Widget currentPage;
 
                       // 根据应用状态决定显示哪个页面

@@ -381,8 +381,8 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     }
 
     final fallbackStart = DateTime(now.year - 1, now.month, now.day);
-    if (earliest == null) earliest = fallbackStart;
-    if (latest == null) latest = now;
+    earliest ??= fallbackStart;
+    latest ??= now;
     if (latest.isBefore(earliest)) latest = earliest;
     return _MessageRange(
       startSec: earliest.millisecondsSinceEpoch ~/ 1000,
@@ -1507,7 +1507,7 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
           _imageBulkDone = done;
           _imageBulkFailed = failed;
           _imageBulkStatus =
-              '已解密 $done/${_imageBulkTotal}（并行 $concurrency/$cpu）'
+              '已解密 $done/$_imageBulkTotal（并行 $concurrency/$cpu）'
               '${lastError != null ? '，最近错误：$lastError' : ''}';
         });
       });
@@ -1715,9 +1715,9 @@ class _ChatPageState extends State<ChatPage> with TickerProviderStateMixin {
     } else {
       final lower = relative.toLowerCase();
       if (lower.endsWith('.t.dat')) {
-        relative = relative.substring(0, relative.length - 6) + '.jpg';
+        relative = '${relative.substring(0, relative.length - 6)}.jpg';
       } else if (lower.endsWith('.dat')) {
-        relative = relative.substring(0, relative.length - 4) + '.jpg';
+        relative = '${relative.substring(0, relative.length - 4)}.jpg';
       } else if (!lower.endsWith('.jpg')) {
         relative = '$relative.jpg';
       }

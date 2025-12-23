@@ -286,7 +286,7 @@ class ChatSession {
       final displaySeconds = seconds != null && seconds == seconds.roundToDouble()
           ? seconds.toInt().toString()
           : value;
-      return '[语音 ${displaySeconds}秒]';
+      return '[语音 $displaySeconds秒]';
     }
 
     return '[语音消息]';

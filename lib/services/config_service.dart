@@ -12,6 +12,8 @@ class ConfigService {
   static const String _keyImageAesKey = 'image_aes_key'; // 图片AES密钥
   static const String _keyManualWxid = 'manual_wxid'; // 手动输入的wxid
   static const String _keyDebugMode = 'debug_mode'; // 调试模式开关
+  static const String _keyLaunchPending =
+      'last_launch_pending'; // 上次是否未正常完成启动
 
   /// 保存解密密钥
   Future<void> saveDecryptKey(String key) async {
@@ -109,6 +111,30 @@ class ConfigService {
     return prefs.getBool(_keyDebugMode) ?? false;
   }
 
+  /// 标记应用启动开始（用于检测异常退出）
+  Future<void> markLaunchStarted() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyLaunchPending, true);
+  }
+
+  /// 标记应用启动成功（清除异常退出标记）
+  Future<void> markLaunchSuccessful() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyLaunchPending, false);
+  }
+
+  /// 标记应用发生异常退出
+  Future<void> markLaunchCrashed() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyLaunchPending, true);
+  }
+
+  /// 判断上次启动是否异常中断
+  Future<bool> wasLastLaunchInterrupted() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyLaunchPending) ?? false;
+  }
+
   /// 清除所有配置
   Future<void> clearAll() async {
     final prefs = await SharedPreferences.getInstance();
@@ -120,5 +146,6 @@ class ConfigService {
     await prefs.remove(_keyImageAesKey);
     await prefs.remove(_keyManualWxid);
     await prefs.remove(_keyDebugMode);
+    await prefs.remove(_keyLaunchPending);
   }
 }

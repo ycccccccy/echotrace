@@ -67,6 +67,9 @@ class AppState extends ChangeNotifier {
   String _currentPage = 'welcome';
   bool _isLoading = false;
   String? _errorMessage;
+  bool _needsSafeModePrompt = false;
+  bool _safeModeEnabled = false;
+  bool _autoConnectDeferred = false;
 
   // 解密进度
   bool _isDecrypting = false;
@@ -82,6 +85,8 @@ class AppState extends ChangeNotifier {
   String get currentPage => _currentPage;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
+  bool get needsSafeModePrompt => _needsSafeModePrompt;
+  bool get safeModeEnabled => _safeModeEnabled;
 
   // 解密进度 getters
   bool get isDecrypting => _isDecrypting;
@@ -108,6 +113,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
 
     try {
+      final lastLaunchInterrupted =
+          await configService.wasLastLaunchInterrupted();
+      await configService.markLaunchStarted();
+      if (lastLaunchInterrupted) {
+        _needsSafeModePrompt = true;
+        _autoConnectDeferred = true;
+        await logger.warning('AppState', '检测到上次启动异常中断，等待用户选择安全模式');
+      }
+
       // 初始化日志服务
       await logger.initialize();
       await logger.info('AppState', '应用开始初始化');
@@ -124,17 +138,9 @@ class AppState extends ChangeNotifier {
       // 启动时始终显示欢迎页面，让用户手动选择
       _currentPage = 'welcome';
 
-      // 如果已配置，根据配置的模式连接数据库
-      if (_isConfigured) {
-        final mode = await configService.getDatabaseMode();
-        final manualWxid = await configService.getManualWxid();
-        databaseService.setManualWxid(manualWxid);
-        await logger.info('AppState', '数据库模式: $mode');
-        if (mode == 'realtime') {
-          await _tryConnectRealtimeDatabase();
-        } else {
-          await _tryConnectDecryptedDatabase();
-        }
+      // 如果已配置且未延迟连接，根据配置的模式连接数据库
+      if (_isConfigured && !_autoConnectDeferred) {
+        await _autoConnectIfConfigured();
       }
 
       await logger.info('AppState', '应用初始化完成');
@@ -142,8 +148,48 @@ class AppState extends ChangeNotifier {
       _errorMessage = '初始化失败: $e';
       await logger.error('AppState', '应用初始化失败', e, stackTrace);
     } finally {
+      await configService.markLaunchSuccessful();
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> _autoConnectIfConfigured() async {
+    final mode = await configService.getDatabaseMode();
+    final manualWxid = await configService.getManualWxid();
+    databaseService.setManualWxid(manualWxid);
+    await logger.info('AppState', '数据库模式: $mode');
+    if (mode == 'realtime') {
+      try {
+        await _tryConnectRealtimeDatabase();
+      } catch (e) {
+        await logger.warning('AppState', '实时模式连接失败，回退备份模式', e);
+        await _tryConnectDecryptedDatabase();
+      }
+    } else {
+      await _tryConnectDecryptedDatabase();
+    }
+  }
+
+  Future<void> resolveSafeModeChoice({required bool useSafeMode}) async {
+    if (!_needsSafeModePrompt) return;
+    _needsSafeModePrompt = false;
+    _autoConnectDeferred = false;
+    _safeModeEnabled = useSafeMode;
+    notifyListeners();
+
+    if (!useSafeMode && _isConfigured) {
+      _isLoading = true;
+      notifyListeners();
+      try {
+        await _autoConnectIfConfigured();
+      } catch (e, stackTrace) {
+        _errorMessage = '初始化失败: $e';
+        await logger.error('AppState', '应用初始化失败', e, stackTrace);
+      } finally {
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 

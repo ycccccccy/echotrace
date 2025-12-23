@@ -1,4 +1,5 @@
 // 应用入口：处理 CLI 导出参数，创建全局 AppState 并启动 UI
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,8 +7,21 @@ import 'package:provider/provider.dart';
 import 'cli/cli_export_runner.dart';
 import 'providers/app_state.dart';
 import 'pages/home_page.dart';
+import 'services/config_service.dart';
 
 Future<void> main(List<String> args) async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    unawaited(ConfigService().markLaunchCrashed());
+  };
+
+  WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+    unawaited(ConfigService().markLaunchCrashed());
+    return false;
+  };
+
   final cliRunner = CliExportRunner();
   final cliExitCode = await cliRunner.tryHandle(args);
   if (cliExitCode != null) {

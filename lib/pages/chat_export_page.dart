@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1191,7 +1192,7 @@ class _ChatExportPageState extends State<ChatExportPage>
                             style: TextStyle(fontSize: 14),
                           ),
                           contentPadding: EdgeInsets.zero,
-                          activeColor: Theme.of(context).colorScheme.primary,
+                          activeThumbColor: Theme.of(context).colorScheme.primary,
                         ),
                         if (!_useAllTime)
                           InkWell(
@@ -1393,7 +1394,8 @@ class _ExportProgressDialog extends StatefulWidget {
   State<_ExportProgressDialog> createState() => _ExportProgressDialogState();
 }
 
-class _ExportProgressDialogState extends State<_ExportProgressDialog> {
+class _ExportProgressDialogState extends State<_ExportProgressDialog>
+    with SingleTickerProviderStateMixin {
   int _successCount = 0;
   int _failedCount = 0;
   int _totalMessagesProcessed = 0;
@@ -1403,6 +1405,7 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
   _ExportStatus _status = _ExportStatus.idle;
   String? _errorMessage;
   late int _totalSessions;
+  late final AnimationController _ritualController;
 
   // 使用 ValueNotifier 来局部更新条数，避免重建整个 widget 导致进度条卡顿
   final ValueNotifier<int> _exportedCountNotifier = ValueNotifier<int>(0);
@@ -1411,11 +1414,16 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
   void initState() {
     super.initState();
     _totalSessions = widget.sessions.length;
+    _ritualController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
     _startExport();
   }
 
   @override
   void dispose() {
+    _ritualController.dispose();
     _exportedCountNotifier.dispose();
     super.dispose();
   }
@@ -1726,47 +1734,10 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
   Widget _buildProcessingUI() {
     return Column(
       children: [
-        TweenAnimationBuilder<double>(
-          tween: Tween<double>(begin: 0, end: _progress >= 0 ? _progress : 0),
-          duration: const Duration(milliseconds: 500),
-          curve: Curves.easeOutCubic,
-          builder: (context, value, _) {
-            return Stack(
-              alignment: Alignment.center,
-              children: [
-                SizedBox(
-                  width: 100,
-                  height: 100,
-                  child: CircularProgressIndicator(
-                    value: _progress >= 0 ? value : null,
-                    strokeWidth: 8,
-                    backgroundColor: Colors.grey.shade100,
-                    color: const Color(0xFF07C160),
-                    strokeCap: StrokeCap.round,
-                  ),
-                ),
-                if (_progress >= 0)
-                  Text(
-                    '${(value * 100).toInt()}%',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF07C160),
-                    ),
-                  )
-                else
-                  const Icon(
-                    Icons.search_rounded,
-                    size: 40,
-                    color: Color(0xFF07C160),
-                  ),
-              ],
-            );
-          },
-        ),
+        _buildRitualProgress(),
         const SizedBox(height: 32),
         Text(
-          _status == _ExportStatus.initializing ? '正在初始化...' : '正在处理导出',
+          _status == _ExportStatus.initializing ? '正在初始化...' : '记忆装瓶中',
           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 12),
@@ -1875,6 +1846,157 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
           },
         ),
       ],
+    );
+  }
+
+  Widget _buildRitualProgress() {
+    final isIndeterminate = _progress < 0;
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: isIndeterminate ? 0 : _progress),
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, _) {
+        return AnimatedBuilder(
+          animation: _ritualController,
+          builder: (context, __) {
+            final pulse =
+                (math.sin(_ritualController.value * math.pi * 2) + 1) / 2;
+            final fill = isIndeterminate ? 0.35 + 0.15 * pulse : value;
+            final capOffset = (1 - fill) * 10;
+            return SizedBox(
+              width: 140,
+              height: 140,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          const Color(0xFF07C160).withValues(alpha: 0.25),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.0, 0.75],
+                      ),
+                    ),
+                  ),
+                  Container(
+                    width: 72,
+                    height: 96,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                        color: const Color(0xFF07C160).withValues(alpha: 0.35),
+                        width: 2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF07C160)
+                              .withValues(alpha: 0.15 + 0.1 * pulse),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(26),
+                      child: Stack(
+                        alignment: Alignment.bottomCenter,
+                        children: [
+                          Container(
+                            height: 96 * fill,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  const Color(0xFF07C160)
+                                      .withValues(alpha: 0.2),
+                                  const Color(0xFF07C160)
+                                      .withValues(alpha: 0.8),
+                                ],
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: 10,
+                            left: 10,
+                            child: Container(
+                              width: 14,
+                              height: 50,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                color: Colors.white.withValues(alpha: 0.25),
+                              ),
+                            ),
+                          ),
+                          if (!isIndeterminate)
+                            Center(
+                              child: Text(
+                                '${(value * 100).toInt()}%',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF07C160),
+                                ),
+                              ),
+                            )
+                          else
+                            const Icon(
+                              Icons.auto_awesome,
+                              size: 26,
+                              color: Color(0xFF07C160),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 18 - capOffset,
+                    child: Container(
+                      width: 36,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0F8F4B),
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.2),
+                            blurRadius: 6,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 34 - capOffset,
+                    child: Container(
+                      width: 18,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFF0F8F4B),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF07C160)
+                                .withValues(alpha: 0.4 + 0.2 * pulse),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
