@@ -1,12 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:crypto/crypto.dart';
 import '../providers/app_state.dart';
 import '../services/config_service.dart';
 import '../services/decrypt_service.dart';
@@ -82,8 +80,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
   final Map<String, ValueNotifier<double>> _progressNotifiers = {};
 
   // 图片文件相关
-  final List<ImageFile> _imageFiles = [];
-  bool _isLoadingImages = false;
+  // 注意：图片文件列表现在由 AppState 管理，这里只保留 UI 相关状态
   String? _imageStatusMessage;
   bool _isImageSuccess = false;
   bool _showOnlyUndecrypted = false; // 只显示未解密的文件
@@ -101,7 +98,6 @@ class _DataManagementPageState extends State<DataManagementPage> {
   int _completedImageFiles = 0;
   String _currentDecryptingImage = '';
   final Map<String, bool> _imageDecryptResults = {}; // 记录每个图片的解密结果
-  final Map<String, String> _tableDisplayNameCache = {}; // Msg表哈希 -> 显示名
   final TextEditingController _imageSearchController = TextEditingController();
   String _imageNameQuery = '';
 
@@ -113,7 +109,11 @@ class _DataManagementPageState extends State<DataManagementPage> {
     _imageDecryptService = ImageDecryptService();
     _imageListController.addListener(_handleImageListScroll);
     _loadDatabaseFiles();
-    _loadImageFiles();
+    // 触发图片扫描（如果尚未完成）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final appState = context.read<AppState>();
+      appState.startImageScan();
+    });
   }
 
   @override
@@ -1282,420 +1282,40 @@ class _DataManagementPageState extends State<DataManagementPage> {
 
   // ========== 图片解密相关方法 ==========
 
-  /// 加载图片文件列表
-  Future<void> _loadImageFiles() async {
-    if (!mounted) return;
-
-    // 防止重复扫描
-    if (_isLoadingImages) {
-      await logger.warning('DataManagementPage', '图片扫描已在进行中，跳过本次请求');
-      return;
-    }
-
-    setState(() {
-      _isLoadingImages = true;
-      _imageFiles.clear(); // 清空列表在setState中，确保UI立即更新
-      _displayLimit = _initialImageDisplayLimit; // 重置显示限制
-      _showOnlyUndecrypted = false; // 重置过滤
-      _imageQualityFilter = 'all'; // 重置质量过滤
-    });
-
-    try {
-      await logger.info('DataManagementPage', '开始扫描图片文件...');
-
-      final documentsDir = await getApplicationDocumentsDirectory();
-      final documentsPath = documentsDir.path;
-
-      // 获取配置的路径
-      String? configuredPath = await _configService.getDatabasePath();
-      final manualWxid = await _configService.getManualWxid();
-
-      if (configuredPath == null || configuredPath.isEmpty) {
-        configuredPath = '$documentsPath${Platform.pathSeparator}xwechat_files';
-      }
-
-      await logger.info('DataManagementPage', '配置路径: $configuredPath');
-
-      // 预构建 Msg 表与展示名的映射，便于输出目录使用真实名字
-      await _prepareDisplayNameCache();
-
-      // 扫描图片文件
-      await _scanImagePath(
-        configuredPath,
-        documentsPath,
-        manualWxid: manualWxid,
-      );
-
-      // 按文件大小排序
-      _imageFiles.sort((a, b) => a.fileSize.compareTo(b.fileSize));
-
-      await logger.info(
-        'DataManagementPage',
-        '图片扫描完成，共找到 ${_imageFiles.length} 个文件',
-      );
-
-      if (_imageFiles.isNotEmpty) {
-        _showImageMessage('找到 ${_imageFiles.length} 个图片文件', true);
-      }
-    } catch (e, stackTrace) {
-      await logger.error('DataManagementPage', '加载图片文件失败', e, stackTrace);
-      _showImageMessage('加载图片文件失败: $e', false);
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoadingImages = false;
-        });
-      }
-    }
+  /// 触发重新扫描图片
+  void _refreshImageFiles() {
+    final appState = context.read<AppState>();
+    appState.startImageScan(forceRescan: true);
   }
 
-  /// 智能扫描图片路径（参考数据库扫描逻辑）
-  Future<void> _prepareDisplayNameCache() async {
-    if (!mounted) return;
-    try {
-      final appState = Provider.of<AppState>(context, listen: false);
-      final dbService = appState.databaseService;
-      if (!dbService.isConnected) {
-        await logger.warning('DataManagementPage', '数据库未连接，无法为图片生成展示名映射');
-        return;
-      }
+  /// 获取图片质量统计信息（使用 AppState 中的数据）
+  Future<String> _getImageQualityStats() async {
+    final appState = context.read<AppState>();
+    final imageFiles = appState.imageFiles;
+    if (imageFiles.isEmpty) return '';
 
-      final sessions = await dbService.getSessions();
-      if (sessions.isEmpty) {
-        await logger.warning('DataManagementPage', '未获取到会话列表，跳过展示名映射');
-        return;
-      }
+    final originalCount = imageFiles.where((f) => f.imageQuality == 'original').length;
+    final thumbnailCount = imageFiles.where((f) => f.imageQuality == 'thumbnail').length;
+    final unknownCount = imageFiles.where((f) => f.imageQuality == 'unknown').length;
 
-      final usernames = sessions
-          .map((s) => s.username)
-          .where((u) => u.isNotEmpty)
-          .toList();
-      final displayNames = await dbService.getDisplayNames(usernames);
-
-      _tableDisplayNameCache.clear();
-      for (final username in usernames) {
-        final hash = md5.convert(utf8.encode(username)).toString().toLowerCase();
-        final displayName = displayNames[username]?.trim();
-        if (displayName == null || displayName.isEmpty) continue;
-
-        _tableDisplayNameCache[hash] = displayName;
-        _tableDisplayNameCache['msg_$hash'] = displayName;
-      }
-
-      await logger.info(
-        'DataManagementPage',
-        '已构建图片输出目录映射: ${_tableDisplayNameCache.length} 项',
-      );
-    } catch (e, stackTrace) {
-      await logger.warning(
-        'DataManagementPage',
-        '构建图片展示名映射失败: $e',
-        stackTrace,
-      );
-    }
+    return '原图: $originalCount • 缩略图: $thumbnailCount${unknownCount > 0 ? ' • 未知: $unknownCount' : ''}';
   }
 
-  String _sanitizePathSegment(String name) {
-    var sanitized = name.replaceAll(RegExp(r'[<>:"/\\\\|?*]'), '_').trim();
-    if (sanitized.isEmpty) {
-      return '未知联系人';
-    }
-    // 避免过长的目录名
-    if (sanitized.length > 60) {
-      sanitized = sanitized.substring(0, 60);
-    }
-    return sanitized;
-  }
-
-  String _applyDisplayNameToRelativePath(String relativePath) {
-    if (_tableDisplayNameCache.isEmpty) return relativePath;
-
-    final sep = Platform.pathSeparator;
-    final hasLeadingSep = relativePath.startsWith(sep);
-    final parts = relativePath
-        .split(sep)
-        .where((p) => p.isNotEmpty)
-        .toList();
-    final attachIndex = parts.indexWhere((p) => p.toLowerCase() == 'attach');
-    if (attachIndex != -1 && attachIndex + 1 < parts.length) {
-      final tableSegment = parts[attachIndex + 1];
-      final normalized = tableSegment.toLowerCase();
-      String? displayName = _tableDisplayNameCache[normalized];
-
-      if (displayName == null && normalized.startsWith('msg_')) {
-        final stripped = normalized.substring(4);
-        displayName = _tableDisplayNameCache[stripped];
-      }
-
-      if (displayName != null && displayName.isNotEmpty) {
-        parts[attachIndex + 1] = _sanitizePathSegment(displayName);
-      }
-    }
-
-    final rebuilt = parts.join(sep);
-    return hasLeadingSep ? '$sep$rebuilt' : rebuilt;
-  }
-
-  String _buildImageDecryptedPath(String documentsPath, ImageFile imageFile) {
-    final outputRelativePath = _applyDisplayNameToRelativePath(
-      imageFile.relativePath,
-    );
+  String _buildImageDecryptedPath(String documentsPath, ImageFileInfo imageFile) {
+    final appState = context.read<AppState>();
+    final outputRelativePath = appState.imageDisplayNameCache.isEmpty
+        ? imageFile.relativePath
+        : imageFile.relativePath; // 已经在扫描时处理过了
     final outputDir = Directory(
       '$documentsPath${Platform.pathSeparator}EchoTrace${Platform.pathSeparator}Images',
     );
     return '${outputDir.path}$outputRelativePath'.replaceAll('.dat', '.jpg');
   }
 
-  Future<void> _scanImagePath(
-    String basePath,
-    String documentsPath, {
-    String? manualWxid,
-  }) async {
-    final baseDir = Directory(basePath);
-    if (!await baseDir.exists()) {
-      await logger.warning('DataManagementPage', '图片扫描：目录不存在 $basePath');
-      return;
-    }
-
-    final pathParts = basePath.split(Platform.pathSeparator);
-    final lastPart = pathParts.isNotEmpty ? pathParts.last : '';
-    final normalizedManual = _normalizeWxid(manualWxid);
-
-    await logger.info(
-      'DataManagementPage',
-      '开始扫描图片文件，路径: $basePath, 最后部分: $lastPart',
-    );
-
-    // 判断路径类型并采取不同的扫描策略
-    if (lastPart == 'db_storage') {
-      // 情况1：用户选择了 db_storage 目录
-      // 需要回到父目录（账号目录）来扫描图片
-      if (pathParts.length >= 2) {
-        final accountPath = pathParts
-            .sublist(0, pathParts.length - 1)
-            .join(Platform.pathSeparator);
-        final accountDir = Directory(accountPath);
-        if (normalizedManual != null &&
-            _normalizeWxid(
-                  accountPath.split(Platform.pathSeparator).last,
-                ) !=
-                normalizedManual) {
-          await logger.warning(
-            'DataManagementPage',
-            '图片扫描：选择的db_storage账号与配置wxid不匹配，已跳过',
-          );
-          return;
-        }
-
-        await logger.info(
-          'DataManagementPage',
-          '检测到db_storage路径，扫描账号目录: $accountPath',
-        );
-
-        if (await accountDir.exists()) {
-          await _scanWxidImageDirectory(accountDir, documentsPath);
-        }
-      }
-    } else {
-      // 情况2和3：扫描该目录下所有包含图片的账号目录
-      // 通过检查是否有 db_storage 子文件夹来识别账号目录
-      await logger.info('DataManagementPage', '扫描目录下的所有账号子目录');
-
-      final entities = await baseDir.list().toList();
-      final accountDirs = <Directory>[];
-
-      for (final entity in entities) {
-        if (entity is! Directory) continue;
-
-        // 检查是否有 db_storage 子文件夹（标志账号目录）
-        final dbStoragePath =
-            '${entity.path}${Platform.pathSeparator}db_storage';
-        if (await Directory(dbStoragePath).exists()) {
-          if (normalizedManual != null &&
-              _normalizeWxid(
-                    entity.path.split(Platform.pathSeparator).last,
-                  ) !=
-                  normalizedManual) {
-            continue;
-          }
-          accountDirs.add(entity);
-        }
-      }
-
-      await logger.info('DataManagementPage', '找到 ${accountDirs.length} 个账号目录');
-
-      for (final accountDir in accountDirs) {
-        await _scanWxidImageDirectory(accountDir, documentsPath);
-      }
-    }
-  }
-
-  /// 获取图片质量统计信息
-  Future<String> _getImageQualityStats() async {
-    if (_imageFiles.isEmpty) return '';
-
-    final originalCount = _imageFiles
-        .where((f) => f.imageQuality == 'original')
-        .length;
-    final thumbnailCount = _imageFiles
-        .where((f) => f.imageQuality == 'thumbnail')
-        .length;
-    final unknownCount = _imageFiles
-        .where((f) => f.imageQuality == 'unknown')
-        .length;
-
-    return '原图: $originalCount • 缩略图: $thumbnailCount${unknownCount > 0 ? ' • 未知: $unknownCount' : ''}';
-  }
-
-  /// 检测图片质量类型（原图/缩略图）
-  String _detectImageQuality(String relativePath, int fileSize) {
-    final pathLower = relativePath.toLowerCase();
-    final fileNameLower = relativePath
-        .split(Platform.pathSeparator)
-        .last
-        .toLowerCase();
-
-    // 文件大小判断（这是主要依据）
-    if (fileSize < 50 * 1024) {
-      // 小于50KB，很可能是缩略图
-      return 'thumbnail';
-    } else if (fileSize > 500 * 1024) {
-      // 大于500KB，很可能是原图
-      return 'original';
-    }
-
-    // 路径关键词判断
-    if (pathLower.contains('thumb') ||
-        pathLower.contains('small') ||
-        pathLower.contains('preview') ||
-        pathLower.contains('thum') ||
-        fileNameLower.contains('thumb') ||
-        fileNameLower.contains('small')) {
-      return 'thumbnail';
-    }
-
-    // 文件名模式判断
-    // 微信缩略图通常有特定后缀或模式
-    if (fileNameLower.contains('_t') ||
-        fileNameLower.endsWith('_thumb.dat') ||
-        fileNameLower.endsWith('_small.dat')) {
-      return 'thumbnail';
-    }
-
-    // 路径深度判断
-    // 通常原图在Image目录下，缩略图可能在子目录中
-    final pathParts = relativePath.split(Platform.pathSeparator);
-    if (pathParts.length > 3) {
-      // 路径较深，可能是缩略图
-      return 'thumbnail';
-    }
-
-    // 默认判断为原图（文件大小适中的情况）
-    return 'original';
-  }
-
-  /// 扫描单个wxid目录下的图片
-  Future<void> _scanWxidImageDirectory(
-    Directory wxidDir,
-    String documentsPath,
-  ) async {
-    int foundCount = 0;
-    int updateThreshold = 0; // 每100个文件更新一次UI
-
-    try {
-      await logger.info('DataManagementPage', '开始扫描wxid目录: ${wxidDir.path}');
-
-      // 查找所有 .dat 文件（递归搜索）
-      await for (final entity in wxidDir.list(recursive: true)) {
-        if (entity is File) {
-          final filePath = entity.path.toLowerCase();
-
-          // 只处理 .dat 文件
-          if (!filePath.endsWith('.dat')) {
-            continue;
-          }
-
-          // 跳过数据库文件
-          if (filePath.contains('db_storage') ||
-              filePath.contains('database')) {
-            continue;
-          }
-
-          final fileName = entity.path.split(Platform.pathSeparator).last;
-
-          try {
-            final fileSize = await entity.length();
-
-            // 跳过太小的文件（可能不是图片）
-            if (fileSize < 100) {
-              continue;
-            }
-
-            // 获取相对路径
-            final relativePath = entity.path.replaceFirst(wxidDir.path, '');
-            final outputRelativePath = _applyDisplayNameToRelativePath(
-              relativePath,
-            );
-
-            // 检测图片质量类型
-            final imageQuality = _detectImageQuality(relativePath, fileSize);
-
-            // 计算解密后的路径并检查是否已解密
-            final outputDir = Directory(
-              '$documentsPath${Platform.pathSeparator}EchoTrace${Platform.pathSeparator}Images',
-            );
-            final decryptedPath = '${outputDir.path}$outputRelativePath'.replaceAll(
-              '.dat',
-              '.jpg',
-            );
-            final decryptedExists = await File(decryptedPath).exists();
-
-            // 快速扫描：不检测版本和解密状态（解密时再检测）
-            _imageFiles.add(
-              ImageFile(
-                originalPath: entity.path,
-                fileName: fileName,
-                fileSize: fileSize,
-                relativePath: outputRelativePath,
-                isDecrypted: decryptedExists,
-                decryptedPath: decryptedPath,
-                version: 0, // 默认V3，解密时自动检测
-                imageQuality: imageQuality,
-              ),
-            );
-
-            foundCount++;
-
-            // 每100个文件更新一次UI，减少setState频率
-            if (foundCount > updateThreshold) {
-              updateThreshold = foundCount + 100;
-              if (mounted) {
-                setState(() {}); // 触发UI更新显示当前数量
-              }
-            }
-          } catch (e) {
-            // 单个文件出错不影响整体扫描
-          }
-        }
-      }
-
-      await logger.info(
-        'DataManagementPage',
-        'wxid目录扫描完成，找到 $foundCount 个图片文件',
-      );
-    } catch (e, stackTrace) {
-      await logger.error(
-        'DataManagementPage',
-        '扫描目录失败: ${wxidDir.path}',
-        e,
-        stackTrace,
-      );
-    }
-  }
-
   /// 批量解密图片
   Future<void> _decryptAllImages() async {
     if (!mounted) return;
+    final appState = context.read<AppState>();
     setState(() {
       _isDecryptingImages = true;
       _currentDecryptingImage = '初始化解密线程…';
@@ -1704,7 +1324,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
     });
 
     // 应用当前筛选条件获取需要解密的图片列表
-    List<ImageFile> filteredFiles = _imageFiles;
+    List<ImageFileInfo> filteredFiles = appState.imageFiles.toList();
 
     // 应用质量过滤
     if (_imageQualityFilter != 'all') {
@@ -1754,7 +1374,6 @@ class _DataManagementPageState extends State<DataManagementPage> {
     }
 
     try {
-      await _prepareDisplayNameCache();
       final xorKey = ImageDecryptService.hexToXorKey(xorKeyHex);
       Uint8List? aesKey;
 
@@ -1762,22 +1381,10 @@ class _DataManagementPageState extends State<DataManagementPage> {
         aesKey = ImageDecryptService.hexToBytes16(aesKeyHex);
       }
 
-      // 第一次遍历：标记已存在的文件并收集待解密文件
-      final pendingFiles = <ImageFile>[];
+      // 直接根据扫描时的 isDecrypted 状态过滤，不再重复检查文件是否存在
       final documentsPath =
           (await getApplicationDocumentsDirectory()).path;
-      for (final imageFile in filteredFiles) {
-        final outputPath = _buildImageDecryptedPath(
-          documentsPath,
-          imageFile,
-        );
-        final outputFile = File(outputPath);
-        if (await outputFile.exists()) {
-          imageFile.isDecrypted = true;
-          continue;
-        }
-        pendingFiles.add(imageFile);
-      }
+      final pendingFiles = filteredFiles.where((f) => !f.isDecrypted).toList();
 
       if (pendingFiles.isEmpty) {
         _showImageMessage('当前筛选条件下的图片均已解密', true);
@@ -1790,7 +1397,6 @@ class _DataManagementPageState extends State<DataManagementPage> {
         return;
       }
 
-      final appState = context.read<AppState>();
       final cpu = CpuInfo.logicalProcessors;
       final concurrency = math.max(2, math.min(8, cpu));
       final wxid = await _configService.getManualWxid();
@@ -1924,8 +1530,9 @@ class _DataManagementPageState extends State<DataManagementPage> {
   }
 
   /// 解密单个图片
-  Future<void> _decryptSingleImage(ImageFile imageFile) async {
+  Future<void> _decryptSingleImage(ImageFileInfo imageFile) async {
     if (!mounted) return;
+    final appState = context.read<AppState>();
     setState(() {
       _isDecryptingImages = true;
       _currentDecryptingImage = imageFile.fileName;
@@ -1949,7 +1556,6 @@ class _DataManagementPageState extends State<DataManagementPage> {
     }
 
     try {
-      await _prepareDisplayNameCache();
       final xorKey = ImageDecryptService.hexToXorKey(xorKeyHex);
       Uint8List? aesKey;
 
@@ -1978,8 +1584,9 @@ class _DataManagementPageState extends State<DataManagementPage> {
         aesKey,
       );
 
+      imageFile.isDecrypted = true;
+      appState.updateImageDecryptedStatus(imageFile.originalPath, true);
       setState(() {
-        imageFile.isDecrypted = true;
         _completedImageFiles = 1;
       });
 
@@ -2839,6 +2446,10 @@ class _DataManagementPageState extends State<DataManagementPage> {
 
   /// 构建图片解密页面
   Widget _buildImageSection() {
+    final appState = context.watch<AppState>();
+    final isLoadingImages = appState.isLoadingImages;
+    final imageFiles = appState.imageFiles;
+    
     return Column(
       children: [
         Padding(
@@ -2864,10 +2475,10 @@ class _DataManagementPageState extends State<DataManagementPage> {
                 ),
               ),
               OutlinedButton.icon(
-                onPressed: (_isLoadingImages || _isDecryptingImages)
+                onPressed: (isLoadingImages || _isDecryptingImages)
                     ? null
-                    : _loadImageFiles,
-                icon: _isLoadingImages
+                    : _refreshImageFiles,
+                icon: isLoadingImages
                     ? SizedBox(
                         width: 16,
                         height: 16,
@@ -2877,7 +2488,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
                         ),
                       )
                     : const Icon(Icons.refresh_rounded, size: 18),
-                label: Text(_isLoadingImages ? '扫描中' : '刷新'),
+                label: Text(isLoadingImages ? '扫描中' : '刷新'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _primaryColor,
                   side: BorderSide(
@@ -2895,9 +2506,9 @@ class _DataManagementPageState extends State<DataManagementPage> {
               const SizedBox(width: 10),
               ElevatedButton.icon(
                 onPressed:
-                    (_isLoadingImages ||
+                    (isLoadingImages ||
                             _isDecryptingImages ||
-                            _imageFiles.isEmpty)
+                            imageFiles.isEmpty)
                         ? null
                         : _decryptAllImages,
                 icon: _isDecryptingImages
@@ -2933,7 +2544,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
 
         // 列表区域
         Expanded(
-          child: _isLoadingImages && _imageFiles.isEmpty
+          child: isLoadingImages && imageFiles.isEmpty
               ? Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -2955,10 +2566,10 @@ class _DataManagementPageState extends State<DataManagementPage> {
                               fontWeight: FontWeight.w500,
                             ),
                       ),
-                      if (_imageFiles.isNotEmpty) ...[
+                      if (imageFiles.isNotEmpty) ...[
                         const SizedBox(height: 8),
                         Text(
-                          '已找到 ${_imageFiles.length} 个文件',
+                          '已找到 ${imageFiles.length} 个文件',
                           style: Theme.of(context).textTheme.bodyMedium
                               ?.copyWith(
                                 color: _primaryColor,
@@ -2976,7 +2587,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
                     ],
                   ),
                 )
-              : _imageFiles.isEmpty
+              : imageFiles.isEmpty
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(32),
@@ -3054,7 +2665,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
                         ),
                         const SizedBox(height: 16),
                         OutlinedButton.icon(
-                          onPressed: _loadImageFiles,
+                          onPressed: _refreshImageFiles,
                           icon: const Icon(Icons.refresh),
                           label: const Text('重新扫描'),
                           style: OutlinedButton.styleFrom(
@@ -3108,8 +2719,13 @@ class _DataManagementPageState extends State<DataManagementPage> {
 
   /// 构建图片列表（带过滤和分页）
   Widget _buildImageList() {
+    final appState = context.watch<AppState>();
+    final isLoadingImages = appState.isLoadingImages;
+    final imageFiles = appState.imageFiles;
+    final scannedDecryptedCount = appState.scannedDecryptedCount;
+    
     // 应用过滤
-    List<ImageFile> filteredFiles = _imageFiles;
+    List<ImageFileInfo> filteredFiles = imageFiles.toList();
 
     // 应用质量过滤
     if (_imageQualityFilter != 'all') {
@@ -3185,7 +2801,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
                       ],
                     ),
                   ),
-                  // 统计标签
+                  // 统计标签：已解密/总数
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
@@ -3197,7 +2813,9 @@ class _DataManagementPageState extends State<DataManagementPage> {
                       border: Border.all(color: _borderColor),
                     ),
                     child: Text(
-                      '${displayFiles.length}/${filteredFiles.length}',
+                      isLoadingImages
+                          ? '$scannedDecryptedCount/${imageFiles.length}'
+                          : '${filteredFiles.where((f) => f.isDecrypted).length}/${filteredFiles.length}',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -3394,7 +3012,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
   }
 
   /// 构建图片文件卡片
-  Widget _buildImageCard(ImageFile imageFile) {
+  Widget _buildImageCard(ImageFileInfo imageFile) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
@@ -3734,27 +3352,4 @@ class DatabaseFile {
       decryptedModified: decryptedModified ?? this.decryptedModified,
     );
   }
-}
-
-/// 图片文件数据模型
-class ImageFile {
-  final String originalPath;
-  final String fileName;
-  final int fileSize;
-  final String relativePath; // 相对于图片根目录的路径
-  bool isDecrypted;
-  final String decryptedPath;
-  int version; // 0=V3, 1=V4-V1, 2=V4-V2
-  String imageQuality; // 'original', 'thumbnail', 'unknown'
-
-  ImageFile({
-    required this.originalPath,
-    required this.fileName,
-    required this.fileSize,
-    required this.relativePath,
-    required this.isDecrypted,
-    required this.decryptedPath,
-    this.version = 0,
-    this.imageQuality = 'unknown',
-  });
 }

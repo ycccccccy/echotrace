@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:crypto/crypto.dart';
 import '../services/database_service.dart';
 import '../services/config_service.dart';
 import '../services/logger_service.dart';
@@ -11,6 +12,29 @@ import '../services/voice_message_service.dart';
 import '../services/bulk_worker_pool.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// 图片文件数据模型（提升到全局以便跨页面共享）
+class ImageFileInfo {
+  final String originalPath;
+  final String fileName;
+  final int fileSize;
+  final String relativePath;
+  bool isDecrypted;
+  final String decryptedPath;
+  int version;
+  String imageQuality;
+
+  ImageFileInfo({
+    required this.originalPath,
+    required this.fileName,
+    required this.fileSize,
+    required this.relativePath,
+    required this.isDecrypted,
+    required this.decryptedPath,
+    this.version = 0,
+    this.imageQuality = 'unknown',
+  });
+}
 
 /// 应用状态管理
 class AppState extends ChangeNotifier {
@@ -62,6 +86,275 @@ class AppState extends ChangeNotifier {
       await pool?.close();
     } catch (_) {}
   }
+
+  // ========== 图片扫描状态（全局持久化） ==========
+  final List<ImageFileInfo> _imageFiles = [];
+  bool _isLoadingImages = false;
+  int _scannedDecryptedCount = 0;
+  bool _imageScanCompleted = false;
+  Map<String, String> _imageDisplayNameCache = {};
+
+  List<ImageFileInfo> get imageFiles => _imageFiles;
+  bool get isLoadingImages => _isLoadingImages;
+  int get scannedDecryptedCount => _scannedDecryptedCount;
+  bool get imageScanCompleted => _imageScanCompleted;
+  Map<String, String> get imageDisplayNameCache => _imageDisplayNameCache;
+
+  /// 开始图片扫描（后台执行）
+  Future<void> startImageScan({bool forceRescan = false}) async {
+    if (_isLoadingImages) {
+      await logger.warning('AppState', '图片扫描已在进行中，跳过本次请求');
+      return;
+    }
+    if (_imageScanCompleted && !forceRescan) {
+      await logger.info('AppState', '图片已扫描完成，无需重复扫描');
+      return;
+    }
+
+    _isLoadingImages = true;
+    _imageFiles.clear();
+    _scannedDecryptedCount = 0;
+    _imageScanCompleted = false;
+    notifyListeners();
+
+    try {
+      await logger.info('AppState', '开始后台扫描图片文件...');
+
+      final documentsDir = await getApplicationDocumentsDirectory();
+      final documentsPath = documentsDir.path;
+
+      String? configuredPath = await configService.getDatabasePath();
+      final manualWxid = await configService.getManualWxid();
+
+      if (configuredPath == null || configuredPath.isEmpty) {
+        configuredPath = '$documentsPath${Platform.pathSeparator}xwechat_files';
+      }
+
+      // 预构建展示名映射
+      await _prepareImageDisplayNameCache();
+
+      // 扫描图片文件
+      await _scanImagePath(configuredPath, documentsPath, manualWxid: manualWxid);
+
+      // 按文件大小排序
+      _imageFiles.sort((a, b) => a.fileSize.compareTo(b.fileSize));
+
+      _imageScanCompleted = true;
+      await logger.info('AppState', '图片扫描完成，共找到 ${_imageFiles.length} 个文件，已解密 $_scannedDecryptedCount 个');
+    } catch (e, stackTrace) {
+      await logger.error('AppState', '图片扫描失败', e, stackTrace);
+    } finally {
+      _isLoadingImages = false;
+      notifyListeners();
+    }
+  }
+
+  /// 重置图片扫描状态（用于强制重新扫描）
+  void resetImageScan() {
+    _imageFiles.clear();
+    _scannedDecryptedCount = 0;
+    _imageScanCompleted = false;
+    notifyListeners();
+  }
+
+  /// 更新单个图片的解密状态
+  void updateImageDecryptedStatus(String originalPath, bool isDecrypted) {
+    final index = _imageFiles.indexWhere((f) => f.originalPath == originalPath);
+    if (index != -1) {
+      _imageFiles[index].isDecrypted = isDecrypted;
+      if (isDecrypted) _scannedDecryptedCount++;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _prepareImageDisplayNameCache() async {
+    try {
+      if (!databaseService.isConnected) {
+        await logger.warning('AppState', '数据库未连接，无法为图片生成展示名映射');
+        return;
+      }
+
+      final sessions = await databaseService.getSessions();
+      if (sessions.isEmpty) return;
+
+      final usernames = sessions.map((s) => s.username).where((u) => u.isNotEmpty).toList();
+      final displayNames = await databaseService.getDisplayNames(usernames);
+
+      _imageDisplayNameCache.clear();
+      for (final username in usernames) {
+        final hash = md5.convert(utf8.encode(username)).toString().toLowerCase();
+        final displayName = displayNames[username]?.trim();
+        if (displayName == null || displayName.isEmpty) continue;
+        _imageDisplayNameCache[hash] = displayName;
+        _imageDisplayNameCache['msg_$hash'] = displayName;
+      }
+
+      await logger.info('AppState', '已构建图片输出目录映射: ${_imageDisplayNameCache.length} 项');
+    } catch (e, stackTrace) {
+      await logger.warning('AppState', '构建图片展示名映射失败: $e', stackTrace);
+    }
+  }
+
+  String _sanitizePathSegment(String name) {
+    var sanitized = name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
+    if (sanitized.isEmpty) return '未知联系人';
+    if (sanitized.length > 60) sanitized = sanitized.substring(0, 60);
+    return sanitized;
+  }
+
+  String _applyDisplayNameToRelativePath(String relativePath) {
+    if (_imageDisplayNameCache.isEmpty) return relativePath;
+
+    final sep = Platform.pathSeparator;
+    final hasLeadingSep = relativePath.startsWith(sep);
+    final parts = relativePath.split(sep).where((p) => p.isNotEmpty).toList();
+    final attachIndex = parts.indexWhere((p) => p.toLowerCase() == 'attach');
+    if (attachIndex != -1 && attachIndex + 1 < parts.length) {
+      final tableSegment = parts[attachIndex + 1];
+      final normalized = tableSegment.toLowerCase();
+      String? displayName = _imageDisplayNameCache[normalized];
+
+      if (displayName == null && normalized.startsWith('msg_')) {
+        final stripped = normalized.substring(4);
+        displayName = _imageDisplayNameCache[stripped];
+      }
+
+      if (displayName != null && displayName.isNotEmpty) {
+        parts[attachIndex + 1] = _sanitizePathSegment(displayName);
+      }
+    }
+
+    final rebuilt = parts.join(sep);
+    return hasLeadingSep ? '$sep$rebuilt' : rebuilt;
+  }
+
+  String _detectImageQuality(String relativePath, int fileSize) {
+    final pathLower = relativePath.toLowerCase();
+    final fileNameLower = relativePath.split(Platform.pathSeparator).last.toLowerCase();
+
+    if (fileSize < 50 * 1024) return 'thumbnail';
+    if (fileSize > 500 * 1024) return 'original';
+
+    if (pathLower.contains('thumb') ||
+        pathLower.contains('small') ||
+        pathLower.contains('preview') ||
+        pathLower.contains('thum') ||
+        fileNameLower.contains('thumb') ||
+        fileNameLower.contains('small')) {
+      return 'thumbnail';
+    }
+
+    if (fileNameLower.contains('_t') ||
+        fileNameLower.endsWith('_thumb.dat') ||
+        fileNameLower.endsWith('_small.dat')) {
+      return 'thumbnail';
+    }
+
+    final pathParts = relativePath.split(Platform.pathSeparator);
+    if (pathParts.length > 3) return 'thumbnail';
+
+    return 'original';
+  }
+
+  Future<void> _scanImagePath(String basePath, String documentsPath, {String? manualWxid}) async {
+    final baseDir = Directory(basePath);
+    if (!await baseDir.exists()) {
+      await logger.warning('AppState', '图片扫描：目录不存在 $basePath');
+      return;
+    }
+
+    final pathParts = basePath.split(Platform.pathSeparator);
+    final lastPart = pathParts.isNotEmpty ? pathParts.last : '';
+    final normalizedManual = _normalizeWxid(manualWxid);
+
+    if (lastPart == 'db_storage') {
+      if (pathParts.length >= 2) {
+        final accountPath = pathParts.sublist(0, pathParts.length - 1).join(Platform.pathSeparator);
+        final accountDir = Directory(accountPath);
+        if (normalizedManual != null &&
+            _normalizeWxid(accountPath.split(Platform.pathSeparator).last) != normalizedManual) {
+          return;
+        }
+        if (await accountDir.exists()) {
+          await _scanWxidImageDirectory(accountDir, documentsPath);
+        }
+      }
+    } else {
+      final entities = await baseDir.list().toList();
+      final accountDirs = <Directory>[];
+
+      for (final entity in entities) {
+        if (entity is! Directory) continue;
+        final dbStoragePath = '${entity.path}${Platform.pathSeparator}db_storage';
+        if (await Directory(dbStoragePath).exists()) {
+          if (normalizedManual != null &&
+              _normalizeWxid(entity.path.split(Platform.pathSeparator).last) != normalizedManual) {
+            continue;
+          }
+          accountDirs.add(entity);
+        }
+      }
+
+      for (final accountDir in accountDirs) {
+        await _scanWxidImageDirectory(accountDir, documentsPath);
+      }
+    }
+  }
+
+  Future<void> _scanWxidImageDirectory(Directory wxidDir, String documentsPath) async {
+    int foundCount = 0;
+    int updateThreshold = 0;
+
+    try {
+      await for (final entity in wxidDir.list(recursive: true)) {
+        if (entity is File) {
+          final filePath = entity.path.toLowerCase();
+
+          if (!filePath.endsWith('.dat')) continue;
+          if (filePath.contains('db_storage') || filePath.contains('database')) continue;
+
+          final fileName = entity.path.split(Platform.pathSeparator).last;
+
+          try {
+            final fileSize = await entity.length();
+            if (fileSize < 100) continue;
+
+            final relativePath = entity.path.replaceFirst(wxidDir.path, '');
+            final outputRelativePath = _applyDisplayNameToRelativePath(relativePath);
+            final imageQuality = _detectImageQuality(relativePath, fileSize);
+
+            final outputDir = Directory(
+              '$documentsPath${Platform.pathSeparator}EchoTrace${Platform.pathSeparator}Images',
+            );
+            final decryptedPath = '${outputDir.path}$outputRelativePath'.replaceAll('.dat', '.jpg');
+            final decryptedExists = await File(decryptedPath).exists();
+
+            _imageFiles.add(ImageFileInfo(
+              originalPath: entity.path,
+              fileName: fileName,
+              fileSize: fileSize,
+              relativePath: outputRelativePath,
+              isDecrypted: decryptedExists,
+              decryptedPath: decryptedPath,
+              version: 0,
+              imageQuality: imageQuality,
+            ));
+
+            foundCount++;
+            if (decryptedExists) _scannedDecryptedCount++;
+
+            if (foundCount > updateThreshold) {
+              updateThreshold = foundCount + 100;
+              notifyListeners();
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (e, stackTrace) {
+      await logger.error('AppState', '扫描目录失败: ${wxidDir.path}', e, stackTrace);
+    }
+  }
+  // ========== 图片扫描状态结束 ==========
 
   bool _isConfigured = false;
   String _currentPage = 'welcome';
@@ -736,10 +1029,17 @@ class BulkJobHandle {
   BulkWorkerPool? get pool => _pool;
 
   Future<void> _startPool() async {
-    final pool = await BulkWorkerPool.start(size: poolSize);
-    _pool = pool;
-    if (!_poolCompleter.isCompleted) {
-      _poolCompleter.complete(pool);
+    try {
+      final pool = await BulkWorkerPool.start(size: poolSize);
+      _pool = pool;
+      if (!_poolCompleter.isCompleted) {
+        _poolCompleter.complete(pool);
+      }
+    } catch (e, stackTrace) {
+      if (!_poolCompleter.isCompleted) {
+        _poolCompleter.completeError(e, stackTrace);
+      }
+      rethrow;
     }
   }
 
