@@ -134,9 +134,8 @@ class FormerFriendAnalyzer {
     int sessionsWithMessages = 0;
     int sessionsUnder14Days = 0;
 
-    // 用于存储每个人的最长连续聊天期
-    FormerFriendResult? bestCandidate;
-    int maxConsecutiveDays = 0;
+    // 第一阶段：收集所有符合条件的候选人（连续聊天 >= 14天）
+    List<FormerFriendResult> candidates = [];
 
     for (int i = 0; i < privateSessions.length; i++) {
       final session = privateSessions[i];
@@ -183,7 +182,41 @@ class FormerFriendAnalyzer {
           longestPeriod['endDate'] as String,
         );
 
-        // 检查是否近期还在频繁聊天
+        // 计算活跃期的统计数据
+        final activeDays =
+            activeEndDate.difference(activeStartDate).inDays + 1;
+        final activeDaysCount = longestPeriod['daysCount'] as int;
+        final activeMessageCount = longestPeriod['messageCount'] as int;
+
+        // 计算活跃期后的统计数据
+        final afterDates = sortedDates.where((date) {
+          final d = DateTime.parse(date);
+          return d.isAfter(activeEndDate);
+        }).toList();
+
+        final lastMessageDate = sortedDates.isNotEmpty
+            ? DateTime.parse(sortedDates.last)
+            : null;
+
+        // 计算距离最后一次聊天的天数（使用数据库最新消息时间作为"现在"）
+        final daysSinceLastMessage = lastMessageDate != null
+            ? latestMessageDate.difference(lastMessageDate).inDays
+            : latestMessageDate.difference(activeEndDate).inDays;
+
+        // 计算活跃期之后到最后一条消息之间的天数，用于频率统计
+        final daysAfterActive = lastMessageDate != null
+            ? lastMessageDate.difference(activeEndDate).inDays
+            : 0;
+
+        int messagesAfterActive = 0;
+        for (final date in afterDates) {
+          messagesAfterActive += messagesByDate[date]!['count'] as int;
+        }
+
+        final afterFrequency = daysAfterActive > 0
+            ? messagesAfterActive / daysAfterActive
+            : 0.0;
+
         // 计算近期（最新消息日期往前30天）的消息数量
         final recentMessages = sortedDates.where((date) {
           final d = DateTime.parse(date);
@@ -203,82 +236,107 @@ class FormerFriendAnalyzer {
             ? recentMessageCount / recentDays
             : 0.0;
 
-        // 如果近期频率还很高（比如 > 5条/天），则不算"曾经的好朋友"
-        if (recentFrequency > 5.0) {
-          onLog?.call(
-            '✗ $displayName 近期频率过高 (${recentFrequency.toStringAsFixed(2)}条/天)，跳过',
-            level: 'debug',
-          );
-          continue;
-        }
+        // 将所有连续聊天 >= 14天的候选人都加入列表
+        final candidate = FormerFriendResult(
+          username: session.username,
+          displayName: displayName,
+          activeStartDate: activeStartDate,
+          activeEndDate: activeEndDate,
+          activeDays: activeDays,
+          activeDaysCount: activeDaysCount,
+          activeMessageCount: activeMessageCount,
+          lastMessageDate: lastMessageDate,
+          daysSinceActive: daysSinceLastMessage < 0
+              ? 0
+              : daysSinceLastMessage,
+          messagesAfterActive: messagesAfterActive,
+          afterFrequency: afterFrequency,
+        );
 
-        // 如果这个人的连续天数更多，更新最佳候选人
-        if (consecutiveDays > maxConsecutiveDays) {
-          maxConsecutiveDays = consecutiveDays;
+        candidates.add(candidate);
 
-          // 计算活跃期的统计数据
-          final activeDays =
-              activeEndDate.difference(activeStartDate).inDays + 1;
-          final activeDaysCount = longestPeriod['daysCount'] as int;
-          final activeMessageCount = longestPeriod['messageCount'] as int;
-
-          // 计算活跃期后的统计数据
-          final afterDates = sortedDates.where((date) {
-            final d = DateTime.parse(date);
-            return d.isAfter(activeEndDate);
-          }).toList();
-
-          final lastMessageDate = sortedDates.isNotEmpty
-              ? DateTime.parse(sortedDates.last)
-              : null;
-
-          // 计算距离最后一次聊天的天数（使用数据库最新消息时间作为“现在”）
-          final daysSinceLastMessage = lastMessageDate != null
-              ? latestMessageDate.difference(lastMessageDate).inDays
-              : latestMessageDate.difference(activeEndDate).inDays;
-
-          // 计算活跃期之后到最后一条消息之间的天数，用于频率统计
-          final daysAfterActive = lastMessageDate != null
-              ? lastMessageDate.difference(activeEndDate).inDays
-              : 0;
-
-          int messagesAfterActive = 0;
-          for (final date in afterDates) {
-            messagesAfterActive += messagesByDate[date]!['count'] as int;
-          }
-
-          final afterFrequency = daysAfterActive > 0
-              ? messagesAfterActive / daysAfterActive
-              : 0.0;
-
-          bestCandidate = FormerFriendResult(
-            username: session.username,
-            displayName: displayName,
-            activeStartDate: activeStartDate,
-            activeEndDate: activeEndDate,
-            activeDays: activeDays,
-            activeDaysCount: activeDaysCount,
-            activeMessageCount: activeMessageCount,
-            lastMessageDate: lastMessageDate,
-            daysSinceActive: daysSinceLastMessage < 0
-                ? 0
-                : daysSinceLastMessage,
-            messagesAfterActive: messagesAfterActive,
-            afterFrequency: afterFrequency,
-          );
-
-          onLog?.call(
-            '新的最佳候选: $displayName, 连续聊天$consecutiveDays天, 近期频率${recentFrequency.toStringAsFixed(2)}条/天',
-            level: 'info',
-          );
-        }
+        onLog?.call(
+          '候选人: $displayName, 连续聊天$consecutiveDays天, 离别${daysSinceLastMessage}天, 近期频率${recentFrequency.toStringAsFixed(2)}条/天',
+          level: 'debug',
+        );
       } catch (e) {
         onLog?.call('处理会话 $displayName 时出错: $e', level: 'warning');
       }
     }
 
+    onLog?.call('========== 开始筛选曾经的好朋友 ==========', level: 'info');
+    onLog?.call('找到 ${candidates.length} 个候选人（连续聊天 >= 14天）', level: 'info');
+
+    // 第二阶段：按连续聊天天数排序（从高到低）
+    candidates.sort((a, b) => b.activeDays.compareTo(a.activeDays));
+
+    // 第三阶段：从排序后的候选人中，找出符合"曾经的好朋友"条件的
+    FormerFriendResult? bestCandidate;
+
+    for (final candidate in candidates) {
+      final displayName = candidate.displayName;
+
+      // 计算近期频率
+      final recentDays = latestMessageDate
+          .difference(recentPeriodStart)
+          .inDays;
+
+      // 重新计算近期消息数
+      final messagesByDate = await _databaseService.getSessionMessagesByDate(
+        candidate.username,
+        filterYear: _filterYear,
+      );
+
+      final sortedDates = messagesByDate.keys.toList()..sort();
+      final recentMessages = sortedDates.where((date) {
+        final d = DateTime.parse(date);
+        return d.isAfter(recentPeriodStart) &&
+            d.isBefore(latestMessageDate.add(const Duration(days: 1)));
+      }).toList();
+
+      int recentMessageCount = 0;
+      for (final date in recentMessages) {
+        recentMessageCount += messagesByDate[date]!['count'] as int;
+      }
+
+      final recentFrequency = recentDays > 0
+          ? recentMessageCount / recentDays
+          : 0.0;
+
+      onLog?.call(
+        '检查 $displayName: 连续${candidate.activeDays}天, 离别${candidate.daysSinceActive}天, 近期频率${recentFrequency.toStringAsFixed(2)}条/天',
+        level: 'debug',
+      );
+
+      // 判断条件：
+      // 1. 近期频率 <= 5条/天
+      // 2. 离别天数 >= 7天
+      if (recentFrequency > 5.0) {
+        onLog?.call(
+          '✗ $displayName 近期频率过高 (${recentFrequency.toStringAsFixed(2)}条/天)，跳过',
+          level: 'debug',
+        );
+        continue;
+      }
+
+      if (candidate.daysSinceActive < 7) {
+        onLog?.call(
+          '✗ $displayName 离别时间不足 (${candidate.daysSinceActive}天)，跳过',
+          level: 'debug',
+        );
+        continue;
+      }
+
+      // 找到符合条件的第一个（因为已经按连续天数排序，所以就是最好的）
+      bestCandidate = candidate;
+      onLog?.call(
+        '✓ 找到曾经的好朋友: $displayName, 连续聊天${candidate.activeDays}天, 离别${candidate.daysSinceActive}天',
+        level: 'info',
+      );
+      break;
+    }
+
     onLog?.call('========== 曾经的好朋友分析完成 ==========', level: 'info');
-    onLog?.call('最长连续聊天: $maxConsecutiveDays 天', level: 'info');
     onLog?.call(
       '统计: 总会话=$totalSessions, 有消息=$sessionsWithMessages, 不足14天=$sessionsUnder14Days',
       level: 'info',
