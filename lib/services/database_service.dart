@@ -490,10 +490,7 @@ class DatabaseService {
     final contactMap = <String, ContactRecord>{};
 
     try {
-      final contactDbPath = await _findContactDatabase(
-        retryCount: 3,
-        retryDelayMs: 500,
-      );
+      final contactDbPath = await getContactDatabasePath();
       if (contactDbPath == null) {
         await logger.warning('DatabaseService', '未找到 contact 数据库，无法导出通讯录');
         return [];
@@ -3401,11 +3398,8 @@ class DatabaseService {
         '开始从contact数据库加载联系人信息，会话数量: ${sessions.length}',
       );
 
-      // 尝试连接 contact 数据库（带重试机制）
-      final contactDbPath = await _findContactDatabase(
-        retryCount: 3,
-        retryDelayMs: 500,
-      );
+      // 尝试连接 contact 数据库（优先当前账号）
+      final contactDbPath = await getContactDatabasePath();
       if (contactDbPath == null) {
         await logger.warning('DatabaseService', '无法找到contact数据库，会话将显示原始用户名');
         return;
@@ -4026,6 +4020,27 @@ class DatabaseService {
       }
     }
 
+    if (_currentAccountWxid != null && _currentAccountWxid!.isNotEmpty) {
+      final accountPath =
+          await _findContactDatabaseForAccount(_currentAccountWxid!);
+      if (accountPath != null) {
+        final normalized = PathUtils.normalizeDatabasePath(accountPath);
+        await logger.info(
+          'DatabaseService',
+          '按当前账号定位 contact 数据库: ${PathUtils.escapeForLog(normalized)}',
+        );
+        return normalized;
+      }
+
+      if (_manualWxid != null && _manualWxid!.isNotEmpty) {
+        await logger.warning(
+          'DatabaseService',
+          '已设置手动wxid，但未找到对应 contact 数据库',
+        );
+        return null;
+      }
+    }
+
     final globalPath = await _findContactDatabase(
       retryCount: 1,
       retryDelayMs: 200,
@@ -4043,6 +4058,40 @@ class DatabaseService {
       'DatabaseService',
       "无法定位 contact 数据库（当前 session: ${_sessionDbPath ?? '未知'}）",
     );
+    return null;
+  }
+
+  Future<String?> _findContactDatabaseForAccount(String accountWxid) async {
+    final normalizedTarget = _normalizeManualWxid(accountWxid);
+    if (normalizedTarget == null || normalizedTarget.isEmpty) return null;
+
+    try {
+      final documentsDir = await getApplicationDocumentsDirectory();
+      final echoTraceDir = Directory(
+        '${documentsDir.path}${Platform.pathSeparator}EchoTrace',
+      );
+      if (!await echoTraceDir.exists()) {
+        return null;
+      }
+
+      await for (final entity in echoTraceDir.list()) {
+        if (entity is! Directory) continue;
+        final dirName = PathUtils.basename(entity.path);
+        final normalizedDir = _normalizeManualWxid(dirName) ?? dirName;
+        if (normalizedDir.toLowerCase() != normalizedTarget.toLowerCase()) {
+          continue;
+        }
+
+        final contactDbPath =
+            '${entity.path}${Platform.pathSeparator}contact.db';
+        if (await File(contactDbPath).exists()) {
+          return contactDbPath;
+        }
+      }
+    } catch (e) {
+      await logger.warning('DatabaseService', '按账号查找contact数据库失败', e);
+    }
+
     return null;
   }
 
