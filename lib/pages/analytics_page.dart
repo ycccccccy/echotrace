@@ -10,6 +10,7 @@ import '../services/logger_service.dart';
 import '../models/analytics_data.dart';
 import '../utils/string_utils.dart';
 import 'annual_report_display_page.dart';
+import 'friend_selection_page.dart';
 
 /// 数据分析页面
 class AnalyticsPage extends StatefulWidget {
@@ -574,6 +575,10 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
         _buildAnnualReportEntry(),
         const SizedBox(height: 16),
 
+        // 双人报告入口
+        _buildDualReportEntry(),
+        const SizedBox(height: 16),
+
         _buildOverallStatsCard(),
         const SizedBox(height: 16),
         _buildMessageTypeChart(),
@@ -642,6 +647,91 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                     const SizedBox(height: 4),
                     Text(
                       '深度分析你的聊天数据，发现更多有趣洞察',
+                      style: Theme.of(
+                        context,
+                      ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ),
+              _isLoading
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(wechatGreen),
+                      ),
+                    )
+                  : const Icon(
+                      Icons.chevron_right,
+                      color: Colors.grey,
+                      size: 24,
+                    ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 双人报告入口卡片
+  Widget _buildDualReportEntry() {
+    const wechatGreen = Color(0xFF07C160);
+
+    return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: wechatGreen, width: 1),
+      ),
+      child: InkWell(
+        onTap: _isLoading
+            ? null
+            : () async {
+                // 显示加载状态
+                setState(() {
+                  _isLoading = true;
+                  _loadingStatus = '正在准备双人报告...';
+                });
+
+                try {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => FriendSelectionPage(
+                        databaseService: widget.databaseService,
+                      ),
+                    ),
+                  );
+                } finally {
+                  // 隐藏加载状态
+                  if (mounted) {
+                    setState(() {
+                      _isLoading = false;
+                      _loadingStatus = '';
+                    });
+                  }
+                }
+              },
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '查看双人报告',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '选择一位好友，生成专属的双人聊天报告',
                       style: Theme.of(
                         context,
                       ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
