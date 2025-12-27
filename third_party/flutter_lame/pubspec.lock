@@ -44,10 +44,9 @@ packages:
   dart_lame:
     dependency: "direct main"
     description:
-      name: dart_lame
-      sha256: "5f0e00e54d0d5f0334940fd95f59fbb359f9febc4d3359886e18b48861b60b18"
-      url: "https://pub.dev"
-    source: hosted
+      path: "../dart_lame"
+      relative: true
+    source: path
     version: "1.0.3"
   fake_async:
     dependency: transitive
