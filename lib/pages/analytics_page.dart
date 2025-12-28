@@ -1272,19 +1272,26 @@ class _DualReportSubPageState extends State<_DualReportSubPage> {
       _disposeReportIsolate();
     });
 
-    _reportIsolate = await Isolate.spawn(
-      dualReportIsolateEntry,
-      {
-        'sendPort': receivePort.sendPort,
-        'dbPath': dbPath,
-        'friendUsername': ranking.username,
-        'filterYear': null,
-        'manualWxid': manualWxid,
-      },
-      onExit: exitPort.sendPort,
-      onError: errorPort.sendPort,
-      debugName: 'dual-report',
-    );
+    try {
+      _reportIsolate = await Isolate.spawn(
+        dualReportIsolateEntry,
+        {
+          'sendPort': receivePort.sendPort,
+          'dbPath': dbPath,
+          'friendUsername': ranking.username,
+          'filterYear': null,
+          'manualWxid': manualWxid,
+        },
+        onExit: exitPort.sendPort,
+        onError: errorPort.sendPort,
+        debugName: 'dual-report',
+      );
+    } catch (e) {
+      if (!completer.isCompleted) {
+        completer.completeError(e);
+      }
+      _disposeReportIsolate();
+    }
 
     return completer.future;
   }
