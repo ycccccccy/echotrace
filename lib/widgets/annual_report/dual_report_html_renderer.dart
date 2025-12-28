@@ -183,6 +183,18 @@ body {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
 }
 
+.info-row {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.info-item {
+  flex: 1 1 200px;
+  min-width: 200px;
+}
+
 .info-label {
   font-size: 14px;
   color: #999;
@@ -195,6 +207,27 @@ body {
   font-weight: 700;
   color: #222;
   margin-bottom: 24px;
+}
+
+.info-row .info-value {
+  margin-bottom: 0;
+}
+
+.info-value-sm {
+  font-size: 20px;
+  font-weight: 600;
+  color: #222;
+  word-break: break-all;
+}
+
+.emoji-thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #FFFFFF;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  margin-bottom: 8px;
 }
 
 .info-value .highlight {
@@ -378,6 +411,11 @@ $thisYearSection
     final imageCount = yearlyStats['imageCount'] as int? ?? 0;
     final voiceCount = yearlyStats['voiceCount'] as int? ?? 0;
     final emojiCount = yearlyStats['emojiCount'] as int? ?? 0;
+    final myTopEmojiMd5 = yearlyStats['myTopEmojiMd5'] as String?;
+    final friendTopEmojiMd5 = yearlyStats['friendTopEmojiMd5'] as String?;
+    final myTopEmojiDataUrl = yearlyStats['myTopEmojiDataUrl'] as String?;
+    final friendTopEmojiDataUrl =
+        yearlyStats['friendTopEmojiDataUrl'] as String?;
 
     // 格式化数字：千分位
     String formatNumber(int n) {
@@ -385,6 +423,22 @@ $thisYearSection
         RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
         (Match m) => '${m[1]},',
       );
+    }
+
+    String formatEmojiMd5(String? md5) {
+      if (md5 == null || md5.isEmpty) return '暂无';
+      return md5;
+    }
+
+    String buildEmojiBlock(String? dataUrl, String? md5) {
+      if (dataUrl == null || dataUrl.isEmpty) {
+        final label = _escapeHtml(formatEmojiMd5(md5));
+        return '<div class="info-value info-value-sm">$label</div>';
+      }
+      final safeUrl = _escapeHtml(dataUrl);
+      return '''
+<img class="emoji-thumb" src="$safeUrl" alt="" />
+''';
     }
 
 
@@ -408,9 +462,21 @@ $thisYearSection
   <div class="info-value">
     <span class="highlight">${formatNumber(voiceCount)}</span> <span class="sub-highlight">条</span>
   </div>
-  <div class="info-label">表情包</div>
-  <div class="info-value">
-    <span class="highlight">${formatNumber(emojiCount)}</span> <span class="sub-highlight">张</span>
+  <div class="info-row">
+    <div class="info-item">
+      <div class="info-label">表情包</div>
+      <div class="info-value">
+        <span class="highlight">${formatNumber(emojiCount)}</span> <span class="sub-highlight">张</span>
+      </div>
+    </div>
+    <div class="info-item">
+      <div class="info-label">我最常用的表情包</div>
+      ${buildEmojiBlock(myTopEmojiDataUrl, myTopEmojiMd5)}
+    </div>
+    <div class="info-item">
+      <div class="info-label">${_escapeHtml(friendName)}常用的表情包</div>
+      ${buildEmojiBlock(friendTopEmojiDataUrl, friendTopEmojiMd5)}
+    </div>
   </div>
 </div>
 ''';

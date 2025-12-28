@@ -69,6 +69,8 @@ class DatabaseService {
   List<String>? _cachedMediaDbPaths;
   DateTime? _mediaDbCacheTime;
   static const Duration _mediaDbCacheDuration = Duration(minutes: 5);
+  Database? _cachedEmoticonDb;
+  String? _cachedEmoticonDbPath;
 
   /// 获取当前数据库路径
   String? get dbPath => _sessionDbPath;
@@ -2435,6 +2437,209 @@ class DatabaseService {
     }
   }
 
+
+  /// 获取会话年度最常用表情包（按MD5）
+  Future<Map<String, dynamic>> getSessionYearlyTopEmojiMd5(
+    String sessionId,
+    int year,
+  ) async {
+    if (_sessionDb == null) {
+      throw Exception('数据库未连接');
+    }
+
+    try {
+      final dbInfos = await _collectTableInfosAcrossDatabases(sessionId);
+      final startTimestamp =
+          DateTime(year, 1, 1).millisecondsSinceEpoch ~/ 1000;
+      final endTimestamp =
+          DateTime(year, 12, 31, 23, 59, 59).millisecondsSinceEpoch ~/ 1000;
+
+      final myCounts = <String, int>{};
+      final friendCounts = <String, int>{};
+      final myUrlMap = <String, String>{};
+      final friendUrlMap = <String, String>{};
+
+      const timeCandidates = [
+        'create_time',
+        'createTime',
+        'msg_create_time',
+        'msgCreateTime',
+      ];
+      const typeCandidates = ['local_type', 'type', 'msg_type'];
+
+      String? pickTop(Map<String, int> counts) {
+        if (counts.isEmpty) return null;
+        var top = counts.entries.first;
+        for (final entry in counts.entries.skip(1)) {
+          if (entry.value > top.value) {
+            top = entry;
+          }
+        }
+        return top.key;
+      }
+
+      List<Map<String, dynamic>> buildRanking(
+        Map<String, int> counts,
+        Map<String, String> urlMap,
+        int limit,
+      ) {
+        final entries = counts.entries.toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
+        return entries.take(limit).map((entry) {
+          return {
+            'key': entry.key,
+            'count': entry.value,
+            'url': urlMap[entry.key],
+          };
+        }).toList();
+      }
+
+      for (final dbInfo in dbInfos) {
+        try {
+          final pragmaRows = await dbInfo.database.rawQuery(
+            "PRAGMA table_info('${dbInfo.tableName}')",
+          );
+          final columns = {
+            for (final row in pragmaRows)
+              ((row['name'] as String?) ?? '').toLowerCase():
+                  (row['name'] as String?) ?? '',
+          };
+
+          String? resolveColumn(List<String> candidates) {
+            for (final candidate in candidates) {
+              final key = candidate.toLowerCase();
+              if (columns.containsKey(key)) {
+                return columns[key];
+              }
+            }
+            return null;
+          }
+
+          final timeColumn = resolveColumn(timeCandidates);
+          final typeColumn = resolveColumn(typeCandidates);
+          if (timeColumn == null || typeColumn == null) {
+            continue;
+          }
+
+          final sql = StringBuffer()
+            ..writeln('SELECT m.*,')
+            ..writeln(
+              '  CASE WHEN m.real_sender_id = (SELECT rowid FROM Name2Id WHERE user_name = ?) '
+              'THEN 1 ELSE 0 END AS computed_is_send,',
+            )
+            ..writeln('  n.user_name AS sender_username')
+            ..writeln('FROM ${dbInfo.tableName} m')
+            ..writeln('LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid')
+            ..writeln(
+              'WHERE m.$timeColumn >= ? AND m.$timeColumn <= ? AND m.$typeColumn = 47',
+            );
+
+          final rows = await dbInfo.database.rawQuery(
+            sql.toString(),
+            [_currentAccountWxid ?? '', startTimestamp, endTimestamp],
+          );
+          await logger.debug(
+            'DatabaseService',
+            'top emoji scan ${dbInfo.tableName}: ${rows.length} rows',
+          );
+          if (rows.isEmpty) continue;
+
+          for (final row in rows) {
+            final message = Message.fromMap(row, myWxid: _currentAccountWxid);
+            final md5 = message.emojiMd5;
+            final url = message.emojiCdnUrl ?? '';
+            final hasMd5 = md5 != null && md5.isNotEmpty;
+            final hasUrl = url.isNotEmpty;
+            if (!hasMd5 && !hasUrl) continue;
+            final key = hasMd5 ? md5! : url;
+
+            final isSend = message.isSend;
+            if (isSend == 1) {
+              myCounts[key] = (myCounts[key] ?? 0) + 1;
+              if (hasUrl && !myUrlMap.containsKey(key)) {
+                myUrlMap[key] = url;
+              }
+              continue;
+            }
+            if (isSend == 0) {
+              friendCounts[key] = (friendCounts[key] ?? 0) + 1;
+              if (hasUrl && !friendUrlMap.containsKey(key)) {
+                friendUrlMap[key] = url;
+              }
+              continue;
+            }
+
+            final sender = message.senderUsername;
+            if (sender == null || sender.isEmpty) continue;
+            if (sender == sessionId) {
+              friendCounts[key] = (friendCounts[key] ?? 0) + 1;
+              if (hasUrl && !friendUrlMap.containsKey(key)) {
+                friendUrlMap[key] = url;
+              }
+            } else if (_currentAccountWxid != null &&
+                sender == _currentAccountWxid) {
+              myCounts[key] = (myCounts[key] ?? 0) + 1;
+              if (hasUrl && !myUrlMap.containsKey(key)) {
+                myUrlMap[key] = url;
+              }
+            }
+          }
+        } catch (e) {
+          // 单表失败不影响整体
+        }
+      }
+
+      final missingMd5s = <String>{};
+      for (final key in myCounts.keys) {
+        if (_looksLikeMd5(key) && !myUrlMap.containsKey(key)) {
+          missingMd5s.add(key);
+        }
+      }
+      for (final key in friendCounts.keys) {
+        if (_looksLikeMd5(key) && !friendUrlMap.containsKey(key)) {
+          missingMd5s.add(key);
+        }
+      }
+
+      if (missingMd5s.isNotEmpty) {
+        final lookup = await _queryEmoticonUrls(missingMd5s);
+        if (lookup.isNotEmpty) {
+          for (final entry in lookup.entries) {
+            myUrlMap.putIfAbsent(entry.key, () => entry.value);
+            friendUrlMap.putIfAbsent(entry.key, () => entry.value);
+          }
+        }
+      }
+
+      final myTopKey = pickTop(myCounts);
+      final friendTopKey = pickTop(friendCounts);
+      await logger.debug(
+        'DatabaseService',
+        'top emoji result year=$year my=${myTopKey ?? 'null'} friend=${friendTopKey ?? 'null'}',
+      );
+      final myRankings = buildRanking(myCounts, myUrlMap, 20);
+      final friendRankings = buildRanking(friendCounts, friendUrlMap, 20);
+      return {
+        'myTopEmojiMd5': myTopKey,
+        'friendTopEmojiMd5': friendTopKey,
+        'myTopEmojiUrl': myTopKey == null ? null : myUrlMap[myTopKey],
+        'friendTopEmojiUrl':
+            friendTopKey == null ? null : friendUrlMap[friendTopKey],
+        'myEmojiRankings': myRankings,
+        'friendEmojiRankings': friendRankings,
+      };
+    } catch (e) {
+      return {
+        'myTopEmojiMd5': null,
+        'friendTopEmojiMd5': null,
+        'myTopEmojiUrl': null,
+        'friendTopEmojiUrl': null,
+        'myEmojiRankings': const <Map<String, dynamic>>[],
+        'friendEmojiRankings': const <Map<String, dynamic>>[],
+      };
+    }
+  }
+
   /// 获取深夜消息统计（0:00-5:59）
   Future<Map<String, dynamic>> getMidnightMessageStats(
     String sessionId, {
@@ -4454,6 +4659,14 @@ class DatabaseService {
     _cachedMediaDbs.clear();
     _cachedMediaDbPaths = null;
     _mediaDbCacheTime = null;
+
+    if (_cachedEmoticonDb != null) {
+      try {
+        await _cachedEmoticonDb!.close();
+      } catch (_) {}
+    }
+    _cachedEmoticonDb = null;
+    _cachedEmoticonDbPath = null;
   }
 
   /// 读取语音原始数据（silk blob），通过 sender wxid + create_time 定位 VoiceInfo。
@@ -4524,6 +4737,85 @@ class DatabaseService {
     );
     _cachedMediaDbs[path] = db;
     return db;
+  }
+
+  Future<Database?> _openEmoticonDb() async {
+    if (_sessionDbPath == null || _sessionDbPath!.isEmpty) return null;
+    final baseDir = PathUtils.dirname(_sessionDbPath!);
+    final dbPath = PathUtils.join(baseDir, 'emoticon.db');
+    if (!File(dbPath).existsSync()) return null;
+    if (_cachedEmoticonDb != null && _cachedEmoticonDbPath == dbPath) {
+      return _cachedEmoticonDb;
+    }
+    try {
+      final db = await _currentFactory.openDatabase(
+        dbPath,
+        options: OpenDatabaseOptions(readOnly: true, singleInstance: false),
+      );
+      _cachedEmoticonDb = db;
+      _cachedEmoticonDbPath = dbPath;
+      return db;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, String>> _queryEmoticonUrls(Set<String> md5s) async {
+    if (md5s.isEmpty) return {};
+    final db = await _openEmoticonDb();
+    if (db == null) return {};
+
+    const batchSize = 200;
+    final md5List = md5s.toList();
+    final result = <String, String>{};
+
+    for (var i = 0; i < md5List.length; i += batchSize) {
+      final chunk = md5List.sublist(
+        i,
+        i + batchSize > md5List.length ? md5List.length : i + batchSize,
+      );
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      final sql = '''
+        SELECT md5, extern_md5, cdn_url, tp_url, thumb_url, extern_url, encrypt_url
+        FROM kNonStoreEmoticonTable
+        WHERE md5 IN ($placeholders) OR extern_md5 IN ($placeholders)
+      ''';
+      final args = [...chunk, ...chunk];
+      final rows = await db.rawQuery(sql, args);
+      for (final row in rows) {
+        final md5 = (row['md5'] as String?) ?? '';
+        final externMd5 = (row['extern_md5'] as String?) ?? '';
+        final url = _firstNonEmptyString([
+          row['cdn_url'],
+          row['tp_url'],
+          row['thumb_url'],
+          row['extern_url'],
+          row['encrypt_url'],
+        ]);
+        if (url.isEmpty) continue;
+        if (md5.isNotEmpty && !result.containsKey(md5)) {
+          result[md5] = url;
+        }
+        if (externMd5.isNotEmpty && !result.containsKey(externMd5)) {
+          result[externMd5] = url;
+        }
+      }
+    }
+
+    return result;
+  }
+
+  bool _looksLikeMd5(String input) {
+    return RegExp(r'^[a-fA-F0-9]{16,32}$').hasMatch(input);
+  }
+
+  String _firstNonEmptyString(List<dynamic> values) {
+    for (final value in values) {
+      if (value == null) continue;
+      final text = value.toString();
+      if (text.isNotEmpty) return text;
+    }
+    return '';
   }
 
   int? _asInt(dynamic v) {
