@@ -118,8 +118,20 @@ class AdvancedAnalyticsService {
   /// 分析语言风格和表达习惯
   Future<LinguisticStyle> analyzeLinguisticStyle() async {
     final sessions = await _databaseService.getSessions();
+    final myWxid = _databaseService.currentAccountWxid;
+    final normalizedMyWxid = myWxid?.toLowerCase();
     final privateSessions = sessions
         .where((s) => !s.isGroup && !_isSystemAccount(s.username))
+        .where((s) {
+          final username = s.username.toLowerCase();
+          if (username == 'filehelper') return false;
+          if (normalizedMyWxid != null &&
+              normalizedMyWxid.isNotEmpty &&
+              username == normalizedMyWxid) {
+            return false;
+          }
+          return true;
+        })
         .toList();
 
     int totalLength = 0;
@@ -331,8 +343,20 @@ class AdvancedAnalyticsService {
   /// "哈哈哈"报告
   Future<Map<String, dynamic>> analyzeHahaReport() async {
     final sessions = await _databaseService.getSessions();
+    final myWxid = _databaseService.currentAccountWxid;
+    final normalizedMyWxid = myWxid?.toLowerCase();
     final privateSessions = sessions
         .where((s) => !s.isGroup && !_isSystemAccount(s.username))
+        .where((s) {
+          final username = s.username.toLowerCase();
+          if (username == 'filehelper') return false;
+          if (normalizedMyWxid != null &&
+              normalizedMyWxid.isNotEmpty &&
+              username == normalizedMyWxid) {
+            return false;
+          }
+          return true;
+        })
         .toList();
 
     int totalHaha = 0;
@@ -380,8 +404,20 @@ class AdvancedAnalyticsService {
   /// 深夜密友
   Future<Map<String, dynamic>> findMidnightChatKing() async {
     final sessions = await _databaseService.getSessions();
+    final myWxid = _databaseService.currentAccountWxid;
+    final normalizedMyWxid = myWxid?.toLowerCase();
     final privateSessions = sessions
         .where((s) => !s.isGroup && !_isSystemAccount(s.username))
+        .where((s) {
+          final username = s.username.toLowerCase();
+          if (username == 'filehelper') return false;
+          if (normalizedMyWxid != null &&
+              normalizedMyWxid.isNotEmpty &&
+              username == normalizedMyWxid) {
+            return false;
+          }
+          return true;
+        })
         .toList();
 
     final midnightStats = <String, Map<String, dynamic>>{};
@@ -517,8 +553,20 @@ class AdvancedAnalyticsService {
   /// 绝对核心好友（总互动数排名）
   Future<List<FriendshipRanking>> getAbsoluteCoreFriends(int limit) async {
     final sessions = await _databaseService.getSessions();
+    final myWxid = _databaseService.currentAccountWxid;
+    final normalizedMyWxid = myWxid?.toLowerCase();
     final privateSessions = sessions
         .where((s) => !s.isGroup && !_isSystemAccount(s.username))
+        .where((s) {
+          final username = s.username.toLowerCase();
+          if (username == 'filehelper') return false;
+          if (normalizedMyWxid != null &&
+              normalizedMyWxid.isNotEmpty &&
+              username == normalizedMyWxid) {
+            return false;
+          }
+          return true;
+        })
         .toList();
 
     final friendshipStats = <String, Map<String, dynamic>>{};
@@ -574,8 +622,20 @@ class AdvancedAnalyticsService {
   /// 找出"我话最多但对方话较少"的关系 - 代表最想向TA倾诉的人
   Future<List<FriendshipRanking>> getConfidantObjects(int limit) async {
     final sessions = await _databaseService.getSessions();
+    final myWxid = _databaseService.currentAccountWxid;
+    final normalizedMyWxid = myWxid?.toLowerCase();
     final privateSessions = sessions
         .where((s) => !s.isGroup && !_isSystemAccount(s.username))
+        .where((s) {
+          final username = s.username.toLowerCase();
+          if (username == 'filehelper') return false;
+          if (normalizedMyWxid != null &&
+              normalizedMyWxid.isNotEmpty &&
+              username == normalizedMyWxid) {
+            return false;
+          }
+          return true;
+        })
         .toList();
 
     final confidentStats = <String, Map<String, dynamic>>{};
@@ -639,8 +699,20 @@ class AdvancedAnalyticsService {
   /// 找出"对方话最多但我话较少"的关系 - 代表最无私的倾听者
   Future<List<FriendshipRanking>> getBestListeners(int limit) async {
     final sessions = await _databaseService.getSessions();
+    final myWxid = _databaseService.currentAccountWxid;
+    final normalizedMyWxid = myWxid?.toLowerCase();
     final privateSessions = sessions
         .where((s) => !s.isGroup && !_isSystemAccount(s.username))
+        .where((s) {
+          final username = s.username.toLowerCase();
+          if (username == 'filehelper') return false;
+          if (normalizedMyWxid != null &&
+              normalizedMyWxid.isNotEmpty &&
+              username == normalizedMyWxid) {
+            return false;
+          }
+          return true;
+        })
         .toList();
 
     final listenerStats = <String, Map<String, dynamic>>{};
@@ -773,8 +845,20 @@ class AdvancedAnalyticsService {
   /// 主动社交指数（按好友统计每天第一条消息由我发起的比例）
   Future<SocialStyleData> analyzeSocialInitiativeRate() async {
     final sessions = await _databaseService.getSessions();
+    final myWxid = _databaseService.currentAccountWxid;
+    final normalizedMyWxid = myWxid?.toLowerCase();
     final privateSessions = sessions
         .where((s) => !s.isGroup && !_isSystemAccount(s.username))
+        .where((s) {
+          final username = s.username.toLowerCase();
+          if (username == 'filehelper') return false;
+          if (normalizedMyWxid != null &&
+              normalizedMyWxid.isNotEmpty &&
+              username == normalizedMyWxid) {
+            return false;
+          }
+          return true;
+        })
         .toList();
 
     final initiativeStats = <String, Map<String, dynamic>>{};
@@ -847,8 +931,20 @@ class AdvancedAnalyticsService {
   /// 年度聊天巅峰日
   Future<ChatPeakDay> analyzePeakChatDay() async {
     final sessions = await _databaseService.getSessions();
+    final myWxid = _databaseService.currentAccountWxid;
+    final normalizedMyWxid = myWxid?.toLowerCase();
     final privateSessions = sessions
         .where((s) => !s.isGroup && !_isSystemAccount(s.username))
+        .where((s) {
+          final username = s.username.toLowerCase();
+          if (username == 'filehelper') return false;
+          if (normalizedMyWxid != null &&
+              normalizedMyWxid.isNotEmpty &&
+              username == normalizedMyWxid) {
+            return false;
+          }
+          return true;
+        })
         .toList();
 
     // 获取所有好友的显示名（包括备注名）
@@ -938,8 +1034,20 @@ class AdvancedAnalyticsService {
   /// 连续打卡记录（最长连续聊天天数和好友）
   Future<Map<String, dynamic>> findLongestCheckInRecord() async {
     final sessions = await _databaseService.getSessions();
+    final myWxid = _databaseService.currentAccountWxid;
+    final normalizedMyWxid = myWxid?.toLowerCase();
     final privateSessions = sessions
         .where((s) => !s.isGroup && !_isSystemAccount(s.username))
+        .where((s) {
+          final username = s.username.toLowerCase();
+          if (username == 'filehelper') return false;
+          if (normalizedMyWxid != null &&
+              normalizedMyWxid.isNotEmpty &&
+              username == normalizedMyWxid) {
+            return false;
+          }
+          return true;
+        })
         .toList();
 
     // 获取所有好友的显示名（包括备注名）
