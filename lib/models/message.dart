@@ -239,6 +239,9 @@ class Message {
       if (emojiXml.isEmpty && messageContent.isNotEmpty) {
         emojiXml = decodeMaybeCompressed(messageContent);
       }
+      if (emojiXml.isEmpty && actualContent.isNotEmpty) {
+        emojiXml = actualContent;
+      }
       if (emojiXml.isNotEmpty) {
         emojiCdnUrl = _extractEmojiCdnUrl(emojiXml);
         emojiMd5 = _extractImageMd5(emojiXml);
@@ -840,7 +843,15 @@ class Message {
       final match = pattern.firstMatch(xml);
       if (match == null) return null;
       final rawUrl = match.group(1)!;
-      return rawUrl.replaceAll('&amp;', '&');
+      final decoded = rawUrl.replaceAll('&amp;', '&');
+      if (decoded.contains('%')) {
+        try {
+          return Uri.decodeComponent(decoded);
+        } catch (_) {
+          return decoded;
+        }
+      }
+      return decoded;
     } catch (e) {
       return null;
     }

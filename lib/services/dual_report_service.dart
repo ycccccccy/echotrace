@@ -101,7 +101,18 @@ class DualReportService {
     // 获取年度统计数据
     final actualYear = year ?? DateTime.now().year;
     await _reportProgress(onProgress, '统计年度聊天数据', '处理中', 85);
-    final yearlyStats = await _getYearlyStats(friendUsername, actualYear);
+    final yearlyStats =
+        Map<String, dynamic>.from(await _getYearlyStats(friendUsername, actualYear));
+    final topEmoji = await _databaseService.getSessionYearlyTopEmojiMd5(
+      friendUsername,
+      actualYear,
+    );
+    yearlyStats['myTopEmojiMd5'] = topEmoji['myTopEmojiMd5'];
+    yearlyStats['friendTopEmojiMd5'] = topEmoji['friendTopEmojiMd5'];
+    yearlyStats['myTopEmojiUrl'] = topEmoji['myTopEmojiUrl'];
+    yearlyStats['friendTopEmojiUrl'] = topEmoji['friendTopEmojiUrl'];
+    yearlyStats['myEmojiRankings'] = topEmoji['myEmojiRankings'];
+    yearlyStats['friendEmojiRankings'] = topEmoji['friendEmojiRankings'];
     await _reportProgress(onProgress, '统计年度聊天数据', '已完成', 92);
 
     final reportData = {
