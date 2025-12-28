@@ -1,4 +1,4 @@
-# 测试补充说明（当前版本）
+# 测试补充说明（当前版本 基于2.3.12）
 
 ## 已新增的测试文件（仅 test/ 与 integration_test/）
 - utils：`test/utils/path_utils_test.dart`（从根目录迁移）、`string_utils_test.dart`、`xml_message_parser_test.dart`、`batch_processor_test.dart`、`cpu_info_test.dart`
@@ -38,7 +38,7 @@
 ## 运行测试
 在项目根执行：
 ```
-cd "C:\Users\leoluis0705\Desktop\echotrace-main (1)\echotrace-main"
+cd "C:\Users\echotrace-main (1)\echotrace-main"（你的本地项目源码位置下）
 $env:PATH="$env:USERPROFILE\dev\flutter_windows_3.38.5-stable\flutter\bin;$env:PATH"
 flutter test
 ```
