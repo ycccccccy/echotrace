@@ -15,6 +15,12 @@ class DualReportPage extends StatefulWidget {
 }
 
 class _DualReportPageState extends State<DualReportPage> {
+  bool _isGenerating = false;
+  String _currentTaskName = '';
+  String _currentTaskStatus = '';
+  int _totalProgress = 0;
+  String _friendDisplayName = '好友';
+
   @override
   void initState() {
     super.initState();
@@ -48,6 +54,11 @@ class _DualReportPageState extends State<DualReportPage> {
       return;
     }
 
+    setState(() {
+      _friendDisplayName =
+          selectedFriend['displayName'] as String? ?? '好友';
+    });
+
     // 生成完整的双人报告
     if (!mounted) return;
     await _generateReport(
@@ -56,14 +67,44 @@ class _DualReportPageState extends State<DualReportPage> {
     );
   }
 
+  Future<void> _updateProgress(
+    String taskName,
+    String status,
+    int progress,
+  ) async {
+    if (!mounted) return;
+    if (progress < _totalProgress) {
+      return;
+    }
+    setState(() {
+      _currentTaskName = taskName;
+      _currentTaskStatus = status;
+      _totalProgress = progress;
+    });
+  }
+
   Future<void> _generateReport({
     required DualReportService dualReportService,
     required String friendUsername,
   }) async {
     try {
+      if (mounted) {
+        setState(() {
+          _isGenerating = true;
+          _currentTaskName = '准备生成双人报告';
+          _currentTaskStatus = '处理中';
+          _totalProgress = 0;
+        });
+      }
+
       // 首先检查缓存
-      final cachedData = await DualReportCacheService.loadReport(friendUsername, null);
+      await _updateProgress('检查缓存', '处理中', 10);
+      final cachedData = await DualReportCacheService.loadReport(
+        friendUsername,
+        null,
+      );
       if (cachedData != null) {
+        await _updateProgress('检查缓存', '已完成', 100);
         // 使用缓存数据
         if (!mounted) return;
         Navigator.pushReplacement(
@@ -75,14 +116,19 @@ class _DualReportPageState extends State<DualReportPage> {
         return;
       }
 
+      await _updateProgress('检查缓存', '已完成', 12);
+
       // 生成完整的双人报告数据
       final reportData = await dualReportService.generateDualReport(
         friendUsername: friendUsername,
         filterYear: null,
+        onProgress: _updateProgress,
       );
 
       // 保存到缓存
+      await _updateProgress('保存报告', '处理中', 96);
       await DualReportCacheService.saveReport(friendUsername, null, reportData);
+      await _updateProgress('保存报告', '已完成', 100);
 
       if (!mounted) return;
 
@@ -101,16 +147,172 @@ class _DualReportPageState extends State<DualReportPage> {
         context,
       ).showSnackBar(SnackBar(content: Text('生成报告失败: $e')));
       Navigator.pop(context);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isGenerating = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isGenerating) {
+      return _buildGeneratingScreen();
+    }
+
     return const Scaffold(
       backgroundColor: Color(0xFF07C160),
       body: Center(
         child: CircularProgressIndicator(
           valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGeneratingScreen() {
+    return Theme(
+      data: ThemeData(
+        fontFamily: 'HarmonyOS Sans SC',
+        textTheme: const TextTheme().apply(fontFamily: 'HarmonyOS Sans SC'),
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: const Text(
+            '生成双人报告',
+            style: TextStyle(fontFamily: 'HarmonyOS Sans SC'),
+          ),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          foregroundColor: Colors.black87,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 200,
+                  height: 200,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        width: 200,
+                        height: 200,
+                        child: TweenAnimationBuilder<double>(
+                          duration: const Duration(milliseconds: 600),
+                          curve: Curves.easeInOut,
+                          tween: Tween<double>(
+                            begin: 0,
+                            end: _totalProgress / 100,
+                          ),
+                          builder: (context, value, child) {
+                            return CircularProgressIndicator(
+                              value: value,
+                              strokeWidth: 12,
+                              backgroundColor: Colors.grey[200],
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                Color(0xFF07C160),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      TweenAnimationBuilder<double>(
+                        duration: const Duration(milliseconds: 600),
+                        curve: Curves.easeInOut,
+                        tween: Tween<double>(
+                          begin: 0,
+                          end: _totalProgress.toDouble(),
+                        ),
+                        builder: (context, value, child) {
+                          return Text(
+                            '${value.toInt()}%',
+                            style: const TextStyle(
+                              fontSize: 48,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF07C160),
+                              fontFamily: 'HarmonyOS Sans SC',
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  '正在生成 $_friendDisplayName 的双人报告',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                    fontFamily: 'HarmonyOS Sans SC',
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  layoutBuilder: (currentChild, previousChildren) {
+                    return Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        ...previousChildren,
+                        if (currentChild != null) currentChild,
+                      ],
+                    );
+                  },
+                  transitionBuilder:
+                      (Widget child, Animation<double> animation) {
+                        return FadeTransition(opacity: animation, child: child);
+                      },
+                  child: _currentTaskName.isNotEmpty
+                      ? Column(
+                          key: ValueKey<String>(
+                            '$_currentTaskName-$_currentTaskStatus',
+                          ),
+                          children: [
+                            Text(
+                              _currentTaskName,
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.black87,
+                                fontFamily: 'HarmonyOS Sans SC',
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 12),
+                            AnimatedDefaultTextStyle(
+                              duration: const Duration(milliseconds: 300),
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: _currentTaskStatus == '已完成'
+                                    ? const Color(0xFF07C160)
+                                    : Colors.grey[600],
+                                fontFamily: 'HarmonyOS Sans SC',
+                              ),
+                              child: Text(
+                                _currentTaskStatus,
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ],
+                        )
+                      : const SizedBox.shrink(key: ValueKey<String>('empty')),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

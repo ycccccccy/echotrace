@@ -310,7 +310,6 @@ body {
 
     String thisYearSection = '';
     if (thisYearFirstChat != null) {
-      final thisYearDate = DateTime.fromMillisecondsSinceEpoch(thisYearFirstChat['createTime'] as int);
       final initiator = thisYearFirstChat['isSentByMe'] == true ? myName : friendName;
       final messages = thisYearFirstChat['firstThreeMessages'] as List<dynamic>?;
 
@@ -427,10 +426,6 @@ $thisYearSection
         .replaceAll("'", '&#39;');
   }
 
-  /// HTML转义（保留换行）
-  static String _escapeHtmlWithBreaks(String text) {
-    return _escapeHtml(text).replaceAll('\n', '<br/>');
-  }
 
   /// 构建section
   static String _buildSection(String className, String content) {

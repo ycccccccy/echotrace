@@ -1115,6 +1115,7 @@ class DatabaseService {
     int offset, {
     int begintimestamp = 0,
     int endTimestamp = 0,
+    bool ascending = false,
   }) async {
     // 根据 real_sender_id 判断是否为自己发送
     // real_sender_id 是 Name2Id 表的 rowid，需要先查找当前用户wxid对应的rowid
@@ -1181,7 +1182,9 @@ class DatabaseService {
     }
 
     //拼接排序
-    buffer.write(' ORDER BY ${schema.orderClauses(alias: 'm').join(', ')}');
+    buffer.write(
+      ' ORDER BY ${schema.orderClauses(alias: 'm', ascending: ascending).join(', ')}',
+    );
 
     // 分页
     if (limit > 0 || offset > 0) {
@@ -1219,6 +1222,8 @@ class DatabaseService {
     int begintimestamp = 0,
     int endTimestamp = 0,
     required Set<int> localTypes,
+    bool ascending = false,
+    int limit = 0,
   }) async {
     final buffer = StringBuffer('SELECT ');
     buffer.write('m.local_id, m.create_time, ');
@@ -1259,7 +1264,13 @@ class DatabaseService {
     if (whereClauses.isNotEmpty) {
       buffer.write(' WHERE ${whereClauses.join(' AND ')}');
     }
-    buffer.write(' ORDER BY ${schema.orderClauses(alias: 'm').join(', ')}');
+    buffer.write(
+      ' ORDER BY ${schema.orderClauses(alias: 'm', ascending: ascending).join(', ')}',
+    );
+    if (limit > 0) {
+      buffer.write(' LIMIT ?');
+      args.add(limit);
+    }
 
     final maps = await db.rawQuery(buffer.toString(), args);
     if (maps.isEmpty) return const [];
@@ -1505,6 +1516,8 @@ class DatabaseService {
     final members = <String>{};
 
     Future<void> collectFromColumn(String table, String column) async {
+      final hasColumn = await _hasTableColumn(database, table, column);
+      if (!hasColumn) return;
       final safeTable = table.replaceAll('"', '""');
       final safeColumn = column.replaceAll('"', '""');
       try {
@@ -2154,6 +2167,182 @@ class DatabaseService {
       };
     } catch (e) {
       return {'total': 0, 'sent': 0, 'received': 0};
+    }
+  }
+
+  /// 获取会话指定时间范围内最早的消息（跨库取少量候选后排序）
+  Future<List<Message>> getEarliestMessages(
+    String sessionId,
+    int beginTimestamp,
+    int endTimestamp,
+    int limit,
+  ) async {
+    if (_sessionDb == null) {
+      throw Exception('数据库未连接');
+    }
+    if (limit <= 0) return const [];
+
+    try {
+      final dbInfos = await _collectTableInfosAcrossDatabases(sessionId);
+      final candidates = <Message>[];
+
+      for (final dbInfo in dbInfos) {
+        try {
+          final chunk = await _queryMessagesFromTable(
+            dbInfo.database,
+            dbInfo.tableName,
+            limit,
+            0,
+            begintimestamp: beginTimestamp,
+            endTimestamp: endTimestamp,
+            ascending: true,
+          );
+          if (chunk.isNotEmpty) {
+            candidates.addAll(chunk);
+          }
+        } catch (e) {
+          // 忽略单库错误
+        }
+      }
+
+      if (candidates.isEmpty) return const [];
+      candidates.sort((a, b) => a.createTime.compareTo(b.createTime));
+      if (candidates.length > limit) {
+        return candidates.take(limit).toList();
+      }
+      return candidates;
+    } catch (e) {
+      return const [];
+    }
+  }
+
+  /// SQL 统计会话年度消息数据（避免加载全部消息）
+  Future<Map<String, int>> getSessionYearlyStats(
+    String sessionId,
+    int year,
+  ) async {
+    if (_sessionDb == null) {
+      throw Exception('数据库未连接');
+    }
+
+    try {
+      final dbInfos = await _collectTableInfosAcrossDatabases(sessionId);
+      final startTimestamp =
+          DateTime(year, 1, 1).millisecondsSinceEpoch ~/ 1000;
+      final endTimestamp =
+          DateTime(year, 12, 31, 23, 59, 59).millisecondsSinceEpoch ~/ 1000;
+
+      int totalMessages = 0;
+      int totalWords = 0;
+      int imageCount = 0;
+      int voiceCount = 0;
+      int emojiCount = 0;
+
+      const timeCandidates = [
+        'create_time',
+        'createTime',
+        'msg_create_time',
+        'msgCreateTime',
+      ];
+      const typeCandidates = ['local_type', 'type', 'msg_type'];
+      const contentCandidates = [
+        'display_content',
+        'message_content',
+        'content',
+        'WCDB_CT_message_content',
+      ];
+
+      for (final dbInfo in dbInfos) {
+        try {
+          final pragmaRows = await dbInfo.database.rawQuery(
+            "PRAGMA table_info('${dbInfo.tableName}')",
+          );
+          final columns = {
+            for (final row in pragmaRows)
+              ((row['name'] as String?) ?? '').toLowerCase(): (row['name'] as String?) ?? '',
+          };
+
+          String? resolveColumn(List<String> candidates) {
+            for (final candidate in candidates) {
+              final key = candidate.toLowerCase();
+              if (columns.containsKey(key)) {
+                return columns[key];
+              }
+            }
+            return null;
+          }
+
+          final timeColumn = resolveColumn(timeCandidates);
+          if (timeColumn == null) {
+            continue;
+          }
+
+          final typeColumn = resolveColumn(typeCandidates);
+          final contentColumn = resolveColumn(contentCandidates);
+
+          final buffer = StringBuffer();
+          buffer.writeln('SELECT');
+          buffer.writeln('  COUNT(*) as total,');
+          if (typeColumn != null) {
+            buffer.writeln(
+              '  COALESCE(SUM(CASE WHEN $typeColumn = 3 THEN 1 ELSE 0 END), 0) as image,',
+            );
+            buffer.writeln(
+              '  COALESCE(SUM(CASE WHEN $typeColumn = 34 THEN 1 ELSE 0 END), 0) as voice,',
+            );
+            buffer.writeln(
+              '  COALESCE(SUM(CASE WHEN $typeColumn = 47 THEN 1 ELSE 0 END), 0) as emoji,',
+            );
+          } else {
+            buffer.writeln('  0 as image,');
+            buffer.writeln('  0 as voice,');
+            buffer.writeln('  0 as emoji,');
+          }
+          if (typeColumn != null && contentColumn != null) {
+            buffer.writeln(
+              '  COALESCE(SUM(CASE WHEN $typeColumn = 1 THEN',
+            );
+            buffer.writeln(
+              '    LENGTH(REPLACE(REPLACE(REPLACE($contentColumn, \' \', \'\'), \'\\n\', \'\'), \'\\t\', \'\'))',
+            );
+            buffer.writeln('  ELSE 0 END), 0) as words');
+          } else {
+            buffer.writeln('  0 as words');
+          }
+          buffer.writeln('FROM ${dbInfo.tableName}');
+          buffer.writeln('WHERE $timeColumn >= ? AND $timeColumn <= ?');
+
+          final result = await dbInfo.database.rawQuery(
+            buffer.toString(),
+            [startTimestamp, endTimestamp],
+          );
+
+          final row = result.first;
+          totalMessages += (row['total'] as int?) ?? 0;
+          imageCount += (row['image'] as int?) ?? 0;
+          voiceCount += (row['voice'] as int?) ?? 0;
+          emojiCount += (row['emoji'] as int?) ?? 0;
+          totalWords += (row['words'] as int?) ?? 0;
+        } catch (e) {
+          // 忽略错误
+        }
+      }
+
+      return {
+        'totalMessages': totalMessages,
+        'totalWords': totalWords,
+        'imageCount': imageCount,
+        'voiceCount': voiceCount,
+        'emojiCount': emojiCount,
+      };
+    } catch (e) {
+      return {
+        'totalMessages': 0,
+        'totalWords': 0,
+        'imageCount': 0,
+        'voiceCount': 0,
+        'emojiCount': 0,
+      };
     }
   }
 
@@ -5514,16 +5703,17 @@ class _MessageTableSchema {
     required this.hasCreateTime,
   });
 
-  List<String> orderClauses({String alias = ''}) {
+  List<String> orderClauses({String alias = '', bool ascending = false}) {
     final prefix = alias.isNotEmpty ? '$alias.' : '';
+    final direction = ascending ? 'ASC' : 'DESC';
     final clauses = <String>[];
     if (hasSortSeq) {
-      clauses.add('${prefix}sort_seq DESC');
+      clauses.add('${prefix}sort_seq $direction');
     }
     if (hasCreateTime) {
-      clauses.add('${prefix}create_time DESC');
+      clauses.add('${prefix}create_time $direction');
     }
-    clauses.add('${prefix}local_id DESC');
+    clauses.add('${prefix}local_id $direction');
     return clauses;
   }
 }

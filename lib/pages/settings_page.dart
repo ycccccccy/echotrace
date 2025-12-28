@@ -13,6 +13,7 @@ import '../services/dual_report_cache_service.dart';
 import '../services/database_service.dart';
 import '../services/logger_service.dart';
 import '../services/wxid_scan_service.dart';
+import '../widgets/toast_overlay.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path/path.dart' as p;
 import 'package:intl/intl.dart';
@@ -36,9 +37,7 @@ class _SettingsPageState extends State<SettingsPage>
   final _configService = ConfigService();
   late final DecryptService _decryptService;
   final _wxidScanService = WxidScanService();
-  OverlayEntry? _toastEntry;
-  Timer? _toastTimer;
-  AnimationController? _toastController;
+  late final ToastOverlay _toast;
 
   final bool _obscureKey = true;
   final bool _obscureImageXorKey = true;
@@ -62,6 +61,7 @@ class _SettingsPageState extends State<SettingsPage>
   @override
   void initState() {
     super.initState();
+    _toast = ToastOverlay(this);
     _decryptService = DecryptService();
     _decryptService.initialize();
     _loadConfig();
@@ -74,9 +74,7 @@ class _SettingsPageState extends State<SettingsPage>
     _wxidController.dispose();
     _imageXorKeyController.dispose();
     _imageAesKeyController.dispose();
-    _toastTimer?.cancel();
-    _toastController?.dispose();
-    _toastEntry?.remove();
+    _toast.dispose();
     _decryptService.dispose();
     super.dispose();
   }
@@ -577,128 +575,7 @@ class _SettingsPageState extends State<SettingsPage>
       _isSuccess = success;
     });
 
-    _toastTimer?.cancel();
-    _toastController?.dispose();
-    _toastController = null;
-    _toastEntry?.remove();
-    _toastEntry = null;
-
-    final overlay = Overlay.of(context);
-
-    _toastController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 220),
-      reverseDuration: const Duration(milliseconds: 160),
-    );
-    final curved = CurvedAnimation(
-      parent: _toastController!,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    );
-
-    _toastEntry = OverlayEntry(
-      builder: (context) {
-        final theme = Theme.of(context).colorScheme;
-        final Color tone = success ? theme.primary : theme.error;
-        final Color surface = theme.surface;
-        final Color bg = Color.lerp(surface, tone, 0.16) ?? surface;
-        final Color textColor =
-            Color.lerp(tone, Colors.black, 0.1) ?? tone;
-        return Positioned(
-          left: 0,
-          right: 0,
-          bottom: 28,
-          child: SafeArea(
-            child: Center(
-              child: FadeTransition(
-                opacity: curved,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0, 0.25),
-                    end: Offset.zero,
-                  ).animate(curved),
-                  child: Material(
-                    color: Colors.transparent,
-                      child: Container(
-                        constraints: const BoxConstraints(maxWidth: 520),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 14,
-                        ),
-                        decoration: BoxDecoration(
-                          color: bg,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: tone.withOpacity(0.28)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.07),
-                              blurRadius: 18,
-                              offset: const Offset(0, 11),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Icon(
-                              success
-                                  ? Icons.check_circle_rounded
-                                  : Icons.error_rounded,
-                              color: textColor,
-                            ),
-                            const SizedBox(width: 12),
-                            Flexible(
-                              child: Text(
-                                message,
-                                style: TextStyle(
-                                  color: textColor,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              onPressed: _hideToast,
-                              visualDensity: VisualDensity.compact,
-                              style: IconButton.styleFrom(
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                padding: const EdgeInsets.all(4),
-                              ),
-                              icon: Icon(
-                                Icons.close_rounded,
-                                size: 18,
-                                color: textColor.withOpacity(0.7),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      );
-
-    overlay.insert(_toastEntry!);
-    _toastController!.forward();
-    _toastTimer = Timer(const Duration(seconds: 4), _hideToast);
-  }
-
-  void _hideToast() {
-    _toastTimer?.cancel();
-    _toastTimer = null;
-    if (_toastController == null || _toastEntry == null) return;
-
-    _toastController!.reverse().whenComplete(() {
-      _toastEntry?.remove();
-      _toastEntry = null;
-      _toastController?.dispose();
-      _toastController = null;
-    });
+    _toast.show(context, message, success: success);
   }
 
   void _updateScanProgress(String message, {bool success = true}) {

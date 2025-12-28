@@ -31,6 +31,8 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
   ChatStatistics? _overallStats;
   List<ContactRanking>? _contactRankings;
   List<ContactRanking>? _allContactRankings; // 保存所有排名
+  final GlobalKey<_DualReportSubPageState> _dualReportKey =
+      GlobalKey<_DualReportSubPageState>();
 
   // 加载进度状态
   String _loadingStatus = '';
@@ -41,6 +43,14 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
   int _topN = 10;
   bool _showAnnualReportSubPage = false;
   bool _showDualReportSubPage = false;
+
+  bool get _isSubPage => _showAnnualReportSubPage || _showDualReportSubPage;
+
+  String get _currentTitle {
+    if (_showAnnualReportSubPage) return '年度报告';
+    if (_showDualReportSubPage) return '双人报告';
+    return '数据分析';
+  }
 
   @override
   void initState() {
@@ -416,6 +426,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
                         )
                       : _showDualReportSubPage
                       ? _DualReportSubPage(
+                          key: _dualReportKey,
                           databaseService: widget.databaseService,
                           rankings: _allContactRankings ?? const <ContactRanking>[],
                           onClose: () {
@@ -447,20 +458,39 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.analytics_outlined,
-            size: 28,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-          const SizedBox(width: 12),
+          if (_isSubPage)
+            IconButton(
+              onPressed: () {
+                if (_showDualReportSubPage) {
+                  final handler = _dualReportKey.currentState;
+                  if (handler != null) {
+                    handler.handleHeaderBack();
+                    return;
+                  }
+                }
+                setState(() {
+                  _showAnnualReportSubPage = false;
+                  _showDualReportSubPage = false;
+                });
+              },
+              icon: const Icon(Icons.arrow_back),
+              tooltip: '返回数据分析',
+            )
+          else
+            Icon(
+              Icons.analytics_outlined,
+              size: 28,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          SizedBox(width: _isSubPage ? 4 : 12),
           Text(
-            '数据分析',
+            _currentTitle,
             style: Theme.of(
               context,
             ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
           ),
           const Spacer(),
-          if (!_isLoading)
+          if (!_isSubPage && !_isLoading)
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: _loadData,
@@ -1091,45 +1121,10 @@ class _AnnualReportSubPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _buildHeader(context),
-        Expanded(
-          child: AnnualReportDisplayPage(
-            databaseService: databaseService,
-            showAppBar: false,
-            onClose: onClose,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildHeader(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.1)),
-        ),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: onClose,
-            icon: const Icon(Icons.arrow_back),
-            tooltip: '返回数据分析',
-          ),
-          const SizedBox(width: 4),
-          Text(
-            '年度报告',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
+    return AnnualReportDisplayPage(
+      databaseService: databaseService,
+      showAppBar: false,
+      onClose: onClose,
     );
   }
 }
@@ -1140,6 +1135,7 @@ class _DualReportSubPage extends StatefulWidget {
   final VoidCallback onClose;
 
   const _DualReportSubPage({
+    super.key,
     required this.databaseService,
     required this.rankings,
     required this.onClose,
@@ -1164,6 +1160,9 @@ class _DualReportSubPageState extends State<_DualReportSubPage> {
   bool _isOpeningBrowser = false;
   bool _didAutoOpen = false;
   String? _errorMessage;
+  String _currentTaskName = '';
+  String _currentTaskStatus = '';
+  int _totalProgress = 0;
 
   @override
   void dispose() {
@@ -1178,21 +1177,28 @@ class _DualReportSubPageState extends State<_DualReportSubPage> {
       _isHtmlLoading = false;
       _errorMessage = null;
       _selectedFriend = ranking;
+      _currentTaskName = '准备生成双人报告';
+      _currentTaskStatus = '处理中';
+      _totalProgress = 0;
     });
 
     try {
+      await _updateProgress('检查缓存', '处理中', 10);
       final cached = await DualReportCacheService.loadReport(
         ranking.username,
         null,
       );
       Map<String, dynamic> reportData;
       if (cached != null) {
+        await _updateProgress('检查缓存', '已完成', 100);
         reportData = cached;
       } else {
+        await _updateProgress('检查缓存', '已完成', 12);
         final service = DualReportService(widget.databaseService);
         reportData = await service.generateDualReport(
           friendUsername: ranking.username,
           filterYear: null,
+          onProgress: _updateProgress,
         );
         await DualReportCacheService.saveReport(
           ranking.username,
@@ -1217,11 +1223,27 @@ class _DualReportSubPageState extends State<_DualReportSubPage> {
     }
   }
 
+  Future<void> _updateProgress(
+    String taskName,
+    String status,
+    int progress,
+  ) async {
+    if (!mounted) return;
+    if (progress < _totalProgress) {
+      return;
+    }
+    setState(() {
+      _currentTaskName = taskName;
+      _currentTaskStatus = status;
+      _totalProgress = progress;
+    });
+  }
+
   Future<void> _buildReportHtml(Map<String, dynamic> reportData) async {
     if (!mounted) return;
     setState(() => _isHtmlLoading = true);
     try {
-      final myName = reportData['myName']?.toString() ?? '';
+      const myName = '我';
       final friendName =
           reportData['friendName']?.toString() ??
           _selectedFriend?.displayName ??
@@ -1343,62 +1365,21 @@ class _DualReportSubPageState extends State<_DualReportSubPage> {
     widget.onClose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _buildHeader(),
-        Expanded(
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: _isGenerating || _isHtmlLoading
-                ? _buildGeneratingView()
-                : _errorMessage != null
-                ? _buildErrorView()
-                : _reportHtml != null
-                ? _buildReportReadyView()
-                : _buildSelectionView(),
-          ),
-        ),
-      ],
-    );
+  void handleHeaderBack() {
+    _handleBack();
   }
 
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(
-          bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.1)),
-        ),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: _handleBack,
-            icon: const Icon(Icons.arrow_back),
-            tooltip: '返回数据分析',
-          ),
-          const SizedBox(width: 4),
-          Text(
-            '双人报告',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const Spacer(),
-          if (_selectedFriend != null)
-            Text(
-              _selectedFriend!.displayName,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[600],
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-        ],
-      ),
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      child: _isGenerating || _isHtmlLoading
+          ? _buildGeneratingView()
+          : _errorMessage != null
+          ? _buildErrorView()
+          : _reportHtml != null
+          ? _buildReportReadyView()
+          : _buildSelectionView(),
     );
   }
 
@@ -1524,28 +1505,115 @@ class _DualReportSubPageState extends State<_DualReportSubPage> {
   }
 
   Widget _buildGeneratingView() {
-    final friendName = _selectedFriend?.displayName ?? '好友';
     return Center(
       key: const ValueKey('dual_report_generating'),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(_wechatGreen),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '正在生成 $friendName 的双人报告...',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '请稍候',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Colors.grey[600],
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 200,
+              height: 200,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox(
+                    width: 200,
+                    height: 200,
+                    child: TweenAnimationBuilder<double>(
+                      duration: const Duration(milliseconds: 600),
+                      curve: Curves.easeInOut,
+                      tween: Tween<double>(
+                        begin: 0,
+                        end: _totalProgress / 100,
+                      ),
+                      builder: (context, value, child) {
+                        return CircularProgressIndicator(
+                          value: value,
+                          strokeWidth: 12,
+                          backgroundColor: Colors.grey[200],
+                          valueColor: const AlwaysStoppedAnimation<Color>(
+                            _wechatGreen,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  TweenAnimationBuilder<double>(
+                    duration: const Duration(milliseconds: 600),
+                    curve: Curves.easeInOut,
+                    tween: Tween<double>(
+                      begin: 0,
+                      end: _totalProgress.toDouble(),
+                    ),
+                    builder: (context, value, child) {
+                      return Text(
+                        '${value.toInt()}%',
+                        style: const TextStyle(
+                          fontSize: 48,
+                          fontWeight: FontWeight.bold,
+                          color: _wechatGreen,
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 24),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              layoutBuilder: (currentChild, previousChildren) {
+                return Stack(
+                  alignment: Alignment.center,
+                  children: [...previousChildren, if (currentChild != null) currentChild],
+                );
+              },
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                return FadeTransition(opacity: animation, child: child);
+              },
+              child: _currentTaskName.isNotEmpty
+                  ? Column(
+                      key: ValueKey<String>(
+                        '$_currentTaskName-$_currentTaskStatus',
+                      ),
+                      children: [
+                        Text(
+                          _currentTaskName,
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w900),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 12),
+                        AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 300),
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: _currentTaskStatus == '已完成'
+                                    ? _wechatGreen
+                                    : Colors.grey[600],
+                              ) ??
+                              TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: _currentTaskStatus == '已完成'
+                                    ? _wechatGreen
+                                    : Colors.grey[600],
+                              ),
+                          child: Text(
+                            _currentTaskStatus,
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
+                    )
+                  : const SizedBox.shrink(key: ValueKey<String>('empty')),
+            ),
+          ],
+        ),
       ),
     );
   }

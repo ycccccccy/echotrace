@@ -58,7 +58,7 @@ class _DualReportBrowserPageState extends State<DualReportBrowserPage> {
         // 使用缓存数据生成HTML
         final html = await DualReportHtmlRenderer.build(
           reportData: cachedData,
-          myName: cachedData['myName'].toString(),
+          myName: '我',
           friendName: widget.friendName,
         );
 
@@ -91,7 +91,7 @@ class _DualReportBrowserPageState extends State<DualReportBrowserPage> {
       // 生成HTML
       final html = await DualReportHtmlRenderer.build(
         reportData: reportData,
-        myName: reportData['myName'].toString(),
+        myName: '我',
         friendName: widget.friendName,
       );
 
