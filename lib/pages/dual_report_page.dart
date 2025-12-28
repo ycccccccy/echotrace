@@ -308,6 +308,8 @@ class _DualReportPageState extends State<DualReportPage> {
       // 保存到缓存
       await _updateProgress('保存报告', '处理中', 96);
       _stripEmojiDataUrls(reportData);
+      final cacheData = _cloneForCache(reportData);
+      _stripEmojiDataUrls(cacheData);
       await DualReportCacheService.saveReport(friendUsername, null, reportData);
       await _updateProgress('保存报告', '已完成', 100);
 

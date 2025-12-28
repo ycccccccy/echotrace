@@ -1343,10 +1343,12 @@ class _DualReportSubPageState extends State<_DualReportSubPage> {
         await _updateProgress('检查缓存', '已完成', 12);
         reportData = await _generateReportInIsolate(ranking);
         _stripEmojiDataUrls(reportData);
+        final cacheData = _cloneForCache(reportData);
+        _stripEmojiDataUrls(cacheData);
         await DualReportCacheService.saveReport(
           ranking.username,
           null,
-          reportData,
+          cacheData,
         );
       }
 
