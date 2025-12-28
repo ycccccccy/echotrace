@@ -1,9 +1,13 @@
 // 主界面布局：侧边栏 + 动画切换内容区，按 AppState.currentPage 渲染各业务页面
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_state.dart';
+import '../services/config_service.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/decrypt_progress_overlay.dart';
+import '../widgets/privacy_agreement_dialog.dart';
 import 'settings_page.dart';
 import 'chat_page.dart';
 import 'welcome_page.dart';
@@ -11,6 +15,7 @@ import 'data_management_page.dart';
 import 'analytics_page.dart';
 import 'chat_export_page.dart';
 import 'group_chat_analysis_page.dart';
+import 'chat_timeline_page.dart';
 
 /// 应用主页面，包含侧边栏和内容区域
 class HomePage extends StatefulWidget {
@@ -22,8 +27,53 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   bool _safeModeDialogShown = false;
+  bool _privacyCheckCompleted = false;
+  bool _privacyCheckInProgress = false;
+  bool _privacyDialogActive = false;
+
+  void _maybeShowPrivacyAgreementDialog(BuildContext context) {
+    if (_privacyCheckCompleted ||
+        _privacyCheckInProgress ||
+        _privacyDialogActive) {
+      return;
+    }
+
+    _privacyCheckInProgress = true;
+    ConfigService().isPrivacyAccepted().then((accepted) {
+      _privacyCheckInProgress = false;
+      if (!mounted) return;
+      if (accepted) {
+        _privacyCheckCompleted = true;
+        setState(() {});
+        return;
+      }
+
+      _privacyDialogActive = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final result = await showPrivacyAgreementDialog(context);
+        if (!mounted) return;
+        if (result == true) {
+          await ConfigService().setPrivacyAccepted(true);
+          _privacyDialogActive = false;
+          _privacyCheckCompleted = true;
+          setState(() {});
+        } else {
+          _exitApp();
+        }
+      });
+    });
+  }
+
+  void _exitApp() {
+    if (Platform.isAndroid || Platform.isIOS) {
+      SystemNavigator.pop();
+    } else {
+      exit(0);
+    }
+  }
 
   void _maybeShowSafeModeDialog(BuildContext context, AppState appState) {
+    if (!_privacyCheckCompleted || _privacyDialogActive) return;
     if (_safeModeDialogShown || !appState.needsSafeModePrompt) return;
     _safeModeDialogShown = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -75,6 +125,7 @@ class _HomePageState extends State<HomePage> {
                   color: Theme.of(context).scaffoldBackgroundColor,
                   child: Consumer<AppState>(
                     builder: (context, appState, child) {
+                      _maybeShowPrivacyAgreementDialog(context);
                       _maybeShowSafeModeDialog(context, appState);
 
                       Widget currentPage;
@@ -89,6 +140,10 @@ class _HomePageState extends State<HomePage> {
                         currentPage = const DataManagementPage();
                       } else if (appState.currentPage == 'analytics') {
                         currentPage = AnalyticsPage(
+                          databaseService: appState.databaseService,
+                        );
+                      } else if (appState.currentPage == 'timeline') {
+                        currentPage = ChatTimelinePage(
                           databaseService: appState.databaseService,
                         );
                       } else if (appState.currentPage == 'export') {

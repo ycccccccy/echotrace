@@ -672,6 +672,10 @@ class DatabaseService {
       throw Exception('数据库未连接');
     }
 
+    if (limit <= 0) {
+      return [];
+    }
+
     try {
       await logger.info(
         'DatabaseService',
@@ -754,166 +758,16 @@ class DatabaseService {
       await logger.info('DatabaseService', '找到 ${dbInfos.length} 个包含该会话消息的数据库');
 
       try {
-        // 第二步：从所有数据库收集消息的时间戳信息（轻量级查询）
-        final List<_MessageTimeInfo> timeInfos = [];
-
-        int fetchCount = limit > 0 ? (offset + limit) : 0;
-        if (fetchCount <= 0) {
-          fetchCount = offset > 0 ? offset : 200;
-        }
-
-        for (int i = 0; i < dbInfos.length; i++) {
-          final dbInfo = dbInfos[i];
-          await logger.info('DatabaseService', '从数据库$i收集时间戳信息');
-
-          try {
-            final selectColumns = <String>['local_id'];
-            if (dbInfo.schema.hasCreateTime) {
-              selectColumns.add('create_time');
-            }
-            if (dbInfo.schema.hasSortSeq) {
-              selectColumns.add('sort_seq');
-            }
-
-            final queryBuffer = StringBuffer('SELECT ')
-              ..write(selectColumns.join(', '))
-              ..write(' FROM ${dbInfo.tableName}')
-              ..write(' ORDER BY ${dbInfo.schema.orderClauses().join(', ')}');
-            if (fetchCount > 0) {
-              queryBuffer.write(' LIMIT $fetchCount');
-            }
-
-            final rows = await dbInfo.database.rawQuery(queryBuffer.toString());
-
-            for (final row in rows) {
-              final localId = row['local_id'] as int?;
-              if (localId == null) continue;
-              final createTime = dbInfo.schema.hasCreateTime
-                  ? (row['create_time'] as int? ?? 0)
-                  : 0;
-              final sortSeq = dbInfo.schema.hasSortSeq
-                  ? row['sort_seq'] as int?
-                  : null;
-              timeInfos.add(
-                _MessageTimeInfo(
-                  localId: localId,
-                  createTime: createTime,
-                  dbIndex: i,
-                  sortSeq: sortSeq,
-                ),
-              );
-            }
-
-            await logger.info(
-              'DatabaseService',
-              '数据库$i收集到 ${rows.length} 条时间戳',
-            );
-          } catch (e) {
-            await logger.warning('DatabaseService', '数据库$i收集时间戳失败', e);
-          }
-        }
-
-        if (timeInfos.isEmpty) {
-          await logger.warning('DatabaseService', '未收集到任何消息时间戳');
-          return [];
-        }
-
-        // 第三步：按时间排序所有时间戳（降序）
-        timeInfos.sort((a, b) {
-          final aPrimary = a.sortSeq ?? a.createTime;
-          final bPrimary = b.sortSeq ?? b.createTime;
-          if (bPrimary != aPrimary) {
-            return bPrimary.compareTo(aPrimary);
-          }
-          if (b.createTime != a.createTime) {
-            return b.createTime.compareTo(a.createTime);
-          }
-          return b.localId.compareTo(a.localId);
-        });
+        final messages = await _mergeSortMessages(
+          dbInfos: dbInfos,
+          limit: limit,
+          offset: offset,
+          ascending: false,
+        );
         await logger.info(
           'DatabaseService',
-          '收集到 ${timeInfos.length} 条时间戳，已排序',
+          'K-Way Merge完成，返回 ${messages.length} 条消息 (offset=$offset, limit=$limit)',
         );
-
-        // 第四步：根据分页需求确定需要加载的消息
-        final startIndex = offset.clamp(0, timeInfos.length);
-        final endIndex = (offset + limit).clamp(0, timeInfos.length);
-        final neededTimeInfos = timeInfos.sublist(startIndex, endIndex);
-
-        await logger.info(
-          'DatabaseService',
-          '需要加载 ${neededTimeInfos.length} 条消息 (offset=$offset, limit=$limit)',
-        );
-
-        // 第五步：按数据库分组需要加载的消息ID
-        final Map<int, List<int>> dbIndexToLocalIds = {};
-        for (final info in neededTimeInfos) {
-          dbIndexToLocalIds
-              .putIfAbsent(info.dbIndex, () => [])
-              .add(info.localId);
-        }
-
-        // 第六步：从各个数据库加载完整消息内容
-        final List<Message> messages = [];
-
-        for (final entry in dbIndexToLocalIds.entries) {
-          final dbIndex = entry.key;
-          final localIds = entry.value;
-          final dbInfo = dbInfos[dbIndex];
-
-          await logger.info(
-            'DatabaseService',
-            '从数据库$dbIndex加载 ${localIds.length} 条消息',
-          );
-
-          try {
-            // 分批查询，避免SQL太长
-            const batchSize = 500;
-            for (int i = 0; i < localIds.length; i += batchSize) {
-              final batchIds = localIds.sublist(
-                i,
-                (i + batchSize).clamp(0, localIds.length),
-              );
-              final idsStr = batchIds.join(',');
-
-              final rows = await dbInfo.database.rawQuery(
-                '''
-                SELECT 
-                  m.*,
-                  CASE WHEN m.real_sender_id = (
-                    SELECT rowid FROM Name2Id WHERE user_name = ?
-                  ) THEN 1 ELSE 0 END AS computed_is_send,
-                  n.user_name AS sender_username
-                FROM ${dbInfo.tableName} m 
-                LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid
-                WHERE m.local_id IN ($idsStr)
-              ''',
-                [_currentAccountWxid ?? ''],
-              );
-
-              messages.addAll(
-                rows.map(
-                  (map) => Message.fromMap(map, myWxid: _currentAccountWxid),
-                ),
-              );
-            }
-          } catch (e) {
-            await logger.error('DatabaseService', '从数据库$dbIndex加载消息失败', e);
-          }
-        }
-
-        // 第七步：按时间排序返回（确保顺序）
-        messages.sort((a, b) {
-          if (b.sortSeq != a.sortSeq) {
-            return b.sortSeq.compareTo(a.sortSeq);
-          }
-          if (b.createTime != a.createTime) {
-            return b.createTime.compareTo(a.createTime);
-          }
-          return b.localId.compareTo(a.localId);
-        });
-
-        await logger.info('DatabaseService', '成功加载 ${messages.length} 条消息');
         return messages;
       } finally {
         // 关闭临时打开的数据库
@@ -937,83 +791,170 @@ class DatabaseService {
   Future<List<Message>> getMessagesByDate(
     String sessionId,
     int begintimestamp,
-    int endtimestamp,
-  ) async {
+    int endtimestamp, {
+    bool ascending = false,
+  }) async {
     if (_sessionDb == null) {
       throw Exception('数据库未连接');
     }
 
     try {
-      // 收集所有消息（可能分散在多个数据库中）
-      final List<Message> allMessages = [];
-
-      // 1. 先尝试当前数据库
-      final Database dbForMsg = await _getDbForMessages();
-      final String? currentDbPath = _messageDbPath; // 保存当前数据库路径用于后续排除
-      final tableName = await _getMessageTableName(sessionId, dbForMsg);
-
-      if (tableName != null) {
-        final messages = await _queryMessagesFromTable(
-          dbForMsg,
-          tableName,
-          0,
-          0,
-          begintimestamp: begintimestamp,
-          endTimestamp: endtimestamp,
-        );
-        allMessages.addAll(messages);
-      }
-
-      // 2. 搜索所有其他消息数据库，排除当前已查询的数据库
-      final allMessageDbs = await _findAllMessageDbs();
-
-      for (int i = 0; i < allMessageDbs.length; i++) {
-        final dbPath = allMessageDbs[i];
-
-        // 跳过已经查询过的当前数据库
-        if (currentDbPath != null && dbPath == currentDbPath) {
-          continue;
-        }
-
-        try {
-          final normalizedDbPath = PathUtils.normalizeDatabasePath(dbPath);
-          final tempDb = await _currentFactory.openDatabase(
-            normalizedDbPath,
-            options: OpenDatabaseOptions(readOnly: true, singleInstance: false),
-          );
-
-          try {
-            final foundTableName = await _getMessageTableName(
-              sessionId,
-              tempDb,
-              dbIndex: i,
-            );
-            if (foundTableName != null) {
-              final messages = await _queryMessagesFromTable(
-                tempDb,
-                foundTableName,
-                0,
-                0,
-                begintimestamp: begintimestamp,
-                endTimestamp: endtimestamp,
-              );
-              allMessages.addAll(messages);
-            }
-          } finally {
-            await tempDb.close();
-          }
-        } catch (e) {
-          // 忽略单个数据库的错误，继续查询其他数据库
-        }
-      }
-
-      // 3. 按时间戳排序（降序，最新的在前）
-      allMessages.sort((a, b) => b.createTime.compareTo(a.createTime));
-
-      return allMessages;
+      final dbInfos = await _collectTableInfosAcrossDatabases(sessionId);
+      return _mergeSortMessages(
+        dbInfos: dbInfos,
+        limit: 0,
+        offset: 0,
+        begintimestamp: begintimestamp,
+        endTimestamp: endtimestamp,
+        ascending: ascending,
+      );
     } catch (e) {
       throw Exception('获取消息列表失败: $e');
     }
+  }
+
+  /// 导出指定会话的全部消息（按时间正序 ASC，批量回调避免占用过多内存）
+  Future<void> exportSessionMessages(
+    String sessionId,
+    Future<void> Function(List<Message> batch) onBatchExport, {
+    int exportBatchSize = 500,
+    int begintimestamp = 0,
+    int endTimestamp = 0,
+  }) async {
+    if (_sessionDb == null) {
+      throw Exception('数据库未连接');
+    }
+    if (exportBatchSize <= 0) {
+      return;
+    }
+
+    try {
+      final dbInfos = await _collectTableInfosAcrossDatabases(sessionId);
+      if (dbInfos.isEmpty) {
+        return;
+      }
+
+      const queryBatchSize = 200;
+      final cursors = <_BatchMessageCursor>[];
+      for (final dbInfo in dbInfos) {
+        cursors.add(
+          _BatchMessageCursor(
+            schema: dbInfo.schema,
+            batchSize: queryBatchSize,
+            fetchBatch: (limit, cursor) => _queryMessagesFromTableKeyset(
+              dbInfo.database,
+              dbInfo.tableName,
+              limit,
+              cursor,
+              schema: dbInfo.schema,
+              logDiagnostics: false,
+              begintimestamp: begintimestamp,
+              endTimestamp: endTimestamp,
+              ascending: true,
+            ),
+          ),
+        );
+      }
+
+      final heap = _MergeEntryHeap(_compareMergeEntryAsc);
+      for (final cursor in cursors) {
+        final first = await cursor.next();
+        if (first != null) {
+          heap.add(_MergeEntry(message: first, cursor: cursor));
+        }
+      }
+
+      if (heap.isEmpty) {
+        return;
+      }
+
+      final buffer = <Message>[];
+      while (heap.isNotEmpty) {
+        final entry = heap.removeFirst();
+        buffer.add(entry.message);
+        if (buffer.length >= exportBatchSize) {
+          await onBatchExport(List<Message>.unmodifiable(buffer));
+          buffer.clear();
+        }
+        final next = await entry.cursor.next();
+        if (next != null) {
+          heap.add(_MergeEntry(message: next, cursor: entry.cursor));
+        }
+      }
+
+      if (buffer.isNotEmpty) {
+        await onBatchExport(List<Message>.unmodifiable(buffer));
+      }
+    } catch (e) {
+      throw Exception('导出消息失败: $e');
+    }
+  }
+
+  Future<List<Message>> _mergeSortMessages({
+    required List<_DatabaseTableInfo> dbInfos,
+    int limit = 0,
+    int offset = 0,
+    int begintimestamp = 0,
+    int endTimestamp = 0,
+    bool ascending = false,
+  }) async {
+    if (dbInfos.isEmpty) {
+      return [];
+    }
+
+    const batchSize = 200;
+    final cursors = <_BatchMessageCursor>[];
+    for (final dbInfo in dbInfos) {
+      cursors.add(
+        _BatchMessageCursor(
+          schema: dbInfo.schema,
+          batchSize: batchSize,
+          fetchBatch: (limit, cursor) => _queryMessagesFromTableKeyset(
+            dbInfo.database,
+            dbInfo.tableName,
+            limit,
+            cursor,
+            schema: dbInfo.schema,
+            logDiagnostics: false,
+            begintimestamp: begintimestamp,
+            endTimestamp: endTimestamp,
+            ascending: ascending,
+          ),
+        ),
+      );
+    }
+
+    final heap = _MergeEntryHeap(
+      ascending ? _compareMergeEntryAsc : _compareMergeEntryDesc,
+    );
+    for (final cursor in cursors) {
+      final first = await cursor.next();
+      if (first != null) {
+        heap.add(_MergeEntry(message: first, cursor: cursor));
+      }
+    }
+
+    if (heap.isEmpty) {
+      return [];
+    }
+
+    final messages = <Message>[];
+    var skipped = 0;
+    final hasLimit = limit > 0;
+    while (heap.isNotEmpty && (!hasLimit || messages.length < limit)) {
+      final entry = heap.removeFirst();
+      if (skipped < offset) {
+        skipped++;
+      } else {
+        messages.add(entry.message);
+      }
+      final next = await entry.cursor.next();
+      if (next != null) {
+        heap.add(_MergeEntry(message: next, cursor: entry.cursor));
+      }
+    }
+
+    return messages;
   }
 
   /// 为批量解密/导出准备会话消息表来源（复用已缓存打开的 message_*.db，避免重复打开/遍历）。
@@ -1116,34 +1057,37 @@ class DatabaseService {
     int begintimestamp = 0,
     int endTimestamp = 0,
     bool ascending = false,
+    _MessageTableSchema? schema,
+    bool logDiagnostics = true,
   }) async {
-    // 根据 real_sender_id 判断是否为自己发送
-    // real_sender_id 是 Name2Id 表的 rowid，需要先查找当前用户wxid对应的rowid
+    if (logDiagnostics) {
+      // 根据 real_sender_id 判断是否为自己发送
+      // real_sender_id 是 Name2Id 表的 rowid，需要先查找当前用户wxid对应的rowid
+      try {
+        final myRowidResult = await db.rawQuery(
+          'SELECT rowid FROM Name2Id WHERE user_name = ?',
+          [_currentAccountWxid ?? ''],
+        );
+        await logger.info(
+          'DatabaseService',
+          '当前用户wxid: $_currentAccountWxid, 在Name2Id表中的rowid: ${myRowidResult.isNotEmpty ? myRowidResult.first['rowid'] : '未找到'}',
+        );
 
-    // 调试：先查询当前用户的rowid
-    try {
-      final myRowidResult = await db.rawQuery(
-        'SELECT rowid FROM Name2Id WHERE user_name = ?',
-        [_currentAccountWxid ?? ''],
-      );
-      await logger.info(
-        'DatabaseService',
-        '当前用户wxid: $_currentAccountWxid, 在Name2Id表中的rowid: ${myRowidResult.isNotEmpty ? myRowidResult.first['rowid'] : '未找到'}',
-      );
-
-      // 查看Name2Id表的前几条记录（从 rowid=1 开始）
-      final name2idSample = await db.rawQuery(
-        'SELECT rowid, user_name FROM Name2Id WHERE rowid <= 5 ORDER BY rowid',
-      );
-      await logger.info(
-        'DatabaseService',
-        'Name2Id表样本数据(rowid 1-5): $name2idSample',
-      );
-    } catch (e) {
-      await logger.error('DatabaseService', '调试查询失败', e);
+        // 查看Name2Id表的前几条记录（从 rowid=1 开始）
+        final name2idSample = await db.rawQuery(
+          'SELECT rowid, user_name FROM Name2Id WHERE rowid <= 5 ORDER BY rowid',
+        );
+        await logger.info(
+          'DatabaseService',
+          'Name2Id表样本数据(rowid 1-5): $name2idSample',
+        );
+      } catch (e) {
+        await logger.error('DatabaseService', '调试查询失败', e);
+      }
     }
 
-    final schema = await _getMessageTableSchema(db, tableName);
+    final resolvedSchema =
+        schema ?? await _getMessageTableSchema(db, tableName);
 
     // 构建基本 SQL
     // 使用子查询找到当前用户wxid在Name2Id表中的rowid，然后与real_sender_id比较
@@ -1183,7 +1127,7 @@ class DatabaseService {
 
     //拼接排序
     buffer.write(
-      ' ORDER BY ${schema.orderClauses(alias: 'm', ascending: ascending).join(', ')}',
+      ' ORDER BY ${resolvedSchema.orderClauses(alias: 'm', ascending: ascending).join(', ')}',
     );
 
     // 分页
@@ -1196,14 +1140,14 @@ class DatabaseService {
     final maps = await db.rawQuery(buffer.toString(), args);
 
     // 调试：打印前几条消息的is_send判断结果
-    if (maps.isNotEmpty) {
+    if (maps.isNotEmpty && logDiagnostics) {
       await logger.info('DatabaseService', '查询到 ${maps.length} 条消息');
       final sampleSize = maps.length > 3 ? 3 : maps.length;
       for (int i = 0; i < sampleSize; i++) {
         final map = maps[i];
         await logger.info(
           'DatabaseService',
-          '消息$i: real_sender_id=${map['debug_real_sender_id']}, my_rowid=${map['debug_my_rowid']}, is_send=${map['is_send']}, sender_username=${map['sender_username']}',
+          "消息$i: real_sender_id=${map['debug_real_sender_id']}, my_rowid=${map['debug_my_rowid']}, is_send=${map['is_send']}, sender_username=${map['sender_username']}",
         );
       }
     }
@@ -1211,6 +1155,151 @@ class DatabaseService {
     return maps
         .map((map) => Message.fromMap(map, myWxid: _currentAccountWxid))
         .toList();
+  }
+
+  Future<List<Message>> _queryMessagesFromTableKeyset(
+    Database db,
+    String tableName,
+    int limit,
+    _MessageCursor? cursor, {
+    required _MessageTableSchema schema,
+    bool logDiagnostics = true,
+    int begintimestamp = 0,
+    int endTimestamp = 0,
+    bool ascending = false,
+  }) async {
+    if (limit <= 0) return const [];
+    if (logDiagnostics) {
+      try {
+        final myRowidResult = await db.rawQuery(
+          'SELECT rowid FROM Name2Id WHERE user_name = ?',
+          [_currentAccountWxid ?? ''],
+        );
+        await logger.info(
+          'DatabaseService',
+          '当前用户wxid: $_currentAccountWxid, 在Name2Id表中的rowid: ${myRowidResult.isNotEmpty ? myRowidResult.first['rowid'] : '未找到'}',
+        );
+
+        final name2idSample = await db.rawQuery(
+          'SELECT rowid, user_name FROM Name2Id WHERE rowid <= 5 ORDER BY rowid',
+        );
+        await logger.info(
+          'DatabaseService',
+          'Name2Id表样本数据(rowid 1-5): $name2idSample',
+        );
+      } catch (e) {
+        await logger.error('DatabaseService', '调试查询失败', e);
+      }
+    }
+
+    final buffer = StringBuffer('''
+      SELECT
+      m.*,
+      CASE WHEN m.real_sender_id = (
+        SELECT rowid FROM Name2Id WHERE user_name = ?
+      ) THEN 1 ELSE 0 END AS computed_is_send,
+      n.user_name AS sender_username,
+      m.real_sender_id as debug_real_sender_id,
+      (SELECT rowid FROM Name2Id WHERE user_name = ?) as debug_my_rowid
+      FROM $tableName m 
+      LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid
+      ''');
+
+    final whereClauses = <String>[];
+    final args = <Object?>[
+      _currentAccountWxid ?? '',
+      _currentAccountWxid ?? '',
+    ];
+
+    if (begintimestamp > 0) {
+      whereClauses.add('m.create_time >= ?');
+      args.add(begintimestamp);
+    }
+    if (endTimestamp > 0) {
+      whereClauses.add('m.create_time <= ?');
+      args.add(endTimestamp);
+    }
+
+    if (cursor != null) {
+      whereClauses.add(
+        _buildKeysetPredicate(schema, args, cursor, ascending: ascending),
+      );
+    }
+
+    if (whereClauses.isNotEmpty) {
+      buffer.write(' WHERE ${whereClauses.join(' AND ')}');
+    }
+
+    buffer.write(
+      ' ORDER BY ${_keysetOrderClause(schema, ascending: ascending)}',
+    );
+    buffer.write(' LIMIT ?');
+    args.add(limit);
+
+    final maps = await db.rawQuery(buffer.toString(), args);
+    if (maps.isNotEmpty && logDiagnostics) {
+      await logger.info('DatabaseService', '查询到 ${maps.length} 条消息');
+      final sampleSize = maps.length > 3 ? 3 : maps.length;
+      for (int i = 0; i < sampleSize; i++) {
+        final map = maps[i];
+        await logger.info(
+          'DatabaseService',
+          "消息$i: real_sender_id=${map['debug_real_sender_id']}, my_rowid=${map['debug_my_rowid']}, is_send=${map['is_send']}, sender_username=${map['sender_username']}",
+        );
+      }
+    }
+
+    return maps
+        .map((map) => Message.fromMap(map, myWxid: _currentAccountWxid))
+        .toList();
+  }
+
+  String _buildKeysetPredicate(
+    _MessageTableSchema schema,
+    List<Object?> args,
+    _MessageCursor cursor, {
+    required bool ascending,
+  }) {
+    final op = ascending ? '>' : '<';
+    if (schema.hasSortSeq) {
+      if (schema.hasCreateTime) {
+        args
+          ..add(cursor.sortSeq ?? 0)
+          ..add(cursor.createTime ?? 0)
+          ..add(cursor.localId);
+        return '(m.sort_seq, m.create_time, m.local_id) $op (?, ?, ?)';
+      }
+      args
+        ..add(cursor.sortSeq ?? 0)
+        ..add(cursor.localId);
+      return '(m.sort_seq, m.local_id) $op (?, ?)';
+    }
+    if (schema.hasCreateTime) {
+      args
+        ..add(cursor.createTime ?? 0)
+        ..add(cursor.localId);
+      return '(m.create_time, m.local_id) $op (?, ?)';
+    }
+    args.add(cursor.localId);
+    return 'm.local_id $op ?';
+  }
+
+  String _keysetOrderClause(
+    _MessageTableSchema schema, {
+    required bool ascending,
+  }) {
+    final direction = ascending ? 'ASC' : 'DESC';
+    if (schema.hasSortSeq) {
+      if (schema.hasCreateTime) {
+      return 'm.sort_seq $direction, '
+          'm.create_time $direction, m.local_id $direction';
+    }
+    return 'm.sort_seq $direction, m.local_id $direction';
+    }
+    if (schema.hasCreateTime) {
+      return 'm.create_time $direction, m.local_id $direction';
+    }
+    return 'm.local_id $direction';
   }
 
   Future<List<Message>> _queryMessagesFromTableLite(
@@ -2536,6 +2625,62 @@ class DatabaseService {
       return {'first': firstTime, 'last': lastTime};
     } catch (e) {
       return {'first': null, 'last': null};
+    }
+  }
+
+  /// 获取会话的活跃日期列表（去重后的本地日期）
+  Future<List<DateTime>> getSessionActiveDates(String sessionId) async {
+    if (_sessionDb == null) {
+      throw Exception('数据库未连接');
+    }
+
+    try {
+      final dbInfos = await _collectTableInfosAcrossDatabases(sessionId);
+      final dateSet = <String>{};
+
+      for (final dbInfo in dbInfos) {
+        try {
+          final result = await dbInfo.database.rawQuery('''
+            SELECT DISTINCT DATE(create_time, 'unixepoch', 'localtime') as date
+            FROM ${dbInfo.tableName}
+          ''');
+
+          for (final row in result) {
+            final value = row['date'];
+            if (value is String && value.isNotEmpty) {
+              dateSet.add(value);
+            }
+          }
+        } catch (_) {
+          // 忽略单表错误
+        }
+      }
+
+      final dates = dateSet
+          .map((date) => _parseLocalDate(date))
+          .whereType<DateTime>()
+          .toList();
+      dates.sort((a, b) => a.compareTo(b));
+      return dates;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  DateTime? _parseLocalDate(String value) {
+    final parts = value.split('-');
+    if (parts.length == 3) {
+      final year = int.tryParse(parts[0]);
+      final month = int.tryParse(parts[1]);
+      final day = int.tryParse(parts[2]);
+      if (year != null && month != null && day != null) {
+        return DateTime(year, month, day);
+      }
+    }
+    try {
+      return DateTime.parse(value);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -5718,6 +5863,174 @@ class _MessageTableSchema {
   }
 }
 
+class _BatchMessageCursor {
+  final _MessageTableSchema schema;
+  final int batchSize;
+  final Future<List<Message>> Function(int limit, _MessageCursor? cursor)
+  fetchBatch;
+  _MessageCursor? _cursor;
+  int _bufferIndex = 0;
+  bool _exhausted = false;
+  List<Message> _buffer = const [];
+
+  _BatchMessageCursor({
+    required this.schema,
+    required this.batchSize,
+    required this.fetchBatch,
+  });
+
+  Future<Message?> next() async {
+    if (_exhausted) return null;
+    if (_bufferIndex >= _buffer.length) {
+      final batch = await fetchBatch(batchSize, _cursor);
+      if (batch.isEmpty) {
+        _exhausted = true;
+        return null;
+      }
+      _buffer = batch;
+      _bufferIndex = 0;
+      final last = batch.last;
+      _cursor = _MessageCursor(
+        sortSeq: schema.hasSortSeq ? last.sortSeq : null,
+        createTime: schema.hasCreateTime ? last.createTime : null,
+        localId: last.localId,
+      );
+    }
+    final msg = _buffer[_bufferIndex];
+    _bufferIndex += 1;
+    return msg;
+  }
+}
+
+class _MergeEntry {
+  final Message message;
+  final _BatchMessageCursor cursor;
+
+  const _MergeEntry({
+    required this.message,
+    required this.cursor,
+  });
+}
+
+class _MergeEntryHeap {
+  final int Function(_MergeEntry a, _MergeEntry b) _compare;
+  final List<_MergeEntry> _items = [];
+
+  _MergeEntryHeap(this._compare);
+
+  bool get isEmpty => _items.isEmpty;
+  bool get isNotEmpty => _items.isNotEmpty;
+
+  void add(_MergeEntry entry) {
+    _items.add(entry);
+    _siftUp(_items.length - 1);
+  }
+
+  _MergeEntry removeFirst() {
+    final first = _items.first;
+    final last = _items.removeLast();
+    if (_items.isNotEmpty) {
+      _items[0] = last;
+      _siftDown(0);
+    }
+    return first;
+  }
+
+  void _siftUp(int index) {
+    var child = index;
+    while (child > 0) {
+      final parent = (child - 1) >> 1;
+      if (_compare(_items[child], _items[parent]) >= 0) {
+        break;
+      }
+      final tmp = _items[child];
+      _items[child] = _items[parent];
+      _items[parent] = tmp;
+      child = parent;
+    }
+  }
+
+  void _siftDown(int index) {
+    var parent = index;
+    final length = _items.length;
+    while (true) {
+      final left = (parent << 1) + 1;
+      if (left >= length) return;
+      var best = left;
+      final right = left + 1;
+      if (right < length &&
+          _compare(_items[right], _items[left]) < 0) {
+        best = right;
+      }
+      if (_compare(_items[best], _items[parent]) >= 0) {
+        return;
+      }
+      final tmp = _items[parent];
+      _items[parent] = _items[best];
+      _items[best] = tmp;
+      parent = best;
+    }
+  }
+}
+
+// 比较逻辑：时间越新，返回值越小。
+// 配合最小堆使用，确保最新的消息（堆顶）最先被 Pop。
+int _compareMergeEntryDesc(_MergeEntry a, _MergeEntry b) {
+  final aSchema = a.cursor.schema;
+  final bSchema = b.cursor.schema;
+  final aPrimary = aSchema.hasSortSeq
+      ? a.message.sortSeq
+      : (aSchema.hasCreateTime ? a.message.createTime : a.message.localId);
+  final bPrimary = bSchema.hasSortSeq
+      ? b.message.sortSeq
+      : (bSchema.hasCreateTime ? b.message.createTime : b.message.localId);
+  if (aPrimary != bPrimary) {
+    return bPrimary.compareTo(aPrimary);
+  }
+  final aCreate =
+      aSchema.hasCreateTime ? a.message.createTime : a.message.localId;
+  final bCreate =
+      bSchema.hasCreateTime ? b.message.createTime : b.message.localId;
+  if (aCreate != bCreate) {
+    return bCreate.compareTo(aCreate);
+  }
+  return b.message.localId.compareTo(a.message.localId);
+}
+
+int _compareMergeEntryAsc(_MergeEntry a, _MergeEntry b) {
+  final aSchema = a.cursor.schema;
+  final bSchema = b.cursor.schema;
+  final aPrimary = aSchema.hasSortSeq
+      ? a.message.sortSeq
+      : (aSchema.hasCreateTime ? a.message.createTime : a.message.localId);
+  final bPrimary = bSchema.hasSortSeq
+      ? b.message.sortSeq
+      : (bSchema.hasCreateTime ? b.message.createTime : b.message.localId);
+  if (aPrimary != bPrimary) {
+    return aPrimary.compareTo(bPrimary);
+  }
+  final aCreate =
+      aSchema.hasCreateTime ? a.message.createTime : a.message.localId;
+  final bCreate =
+      bSchema.hasCreateTime ? b.message.createTime : b.message.localId;
+  if (aCreate != bCreate) {
+    return aCreate.compareTo(bCreate);
+  }
+  return a.message.localId.compareTo(b.message.localId);
+}
+
+class _MessageCursor {
+  final int? sortSeq;
+  final int? createTime;
+  final int localId;
+
+  const _MessageCursor({
+    required this.sortSeq,
+    required this.createTime,
+    required this.localId,
+  });
+}
+
 /// 批量工具用：消息表查询来源（避免每个时间块都重新扫描 message_*.db）。
 class MessageQuerySource {
   final Database database;
@@ -5757,20 +6070,6 @@ class _DatabaseTableInfo {
 }
 
 /// 消息时间信息（用于跨数据库排序）
-class _MessageTimeInfo {
-  final int localId;
-  final int createTime;
-  final int dbIndex;
-  final int? sortSeq;
-
-  _MessageTimeInfo({
-    required this.localId,
-    required this.createTime,
-    required this.dbIndex,
-    this.sortSeq,
-  });
-}
-
 /// 缓存的数据库信息
 class _CachedDatabaseInfo {
   final Database database;

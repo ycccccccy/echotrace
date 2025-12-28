@@ -17,10 +17,6 @@ class ChatExportService {
   final DatabaseService _databaseService;
   final Set<String> _missingDisplayNameLog = <String>{};
   final Map<String, String> _avatarBase64CacheByUrl = <String, String>{};
-  static final RegExp _invalidXmlChars = RegExp(
-    r'[\x00-\x08\x0B\x0C\x0E-\x1F]',
-  );
-
   ChatExportService(this._databaseService);
 
   /// 后台写入字符串到文件（在 Isolate 中执行以避免阻塞 UI）
@@ -742,6 +738,620 @@ class ChatExportService {
     }
   }
 
+  /// 流式导出聊天记录为 JSON 格式
+  Future<bool> exportToJsonStream(
+    ChatSession session, {
+    String? filePath,
+    void Function(int current, int total, String stage)? onProgress,
+    int exportBatchSize = 500,
+    int begintimestamp = 0,
+    int endTimestamp = 0,
+    int totalMessagesHint = 0,
+  }) async {
+    IOSink? sink;
+    try {
+      final totalMessages = totalMessagesHint > 0
+          ? totalMessagesHint
+          : await _safeGetMessageCount(session.username);
+      onProgress?.call(0, totalMessages, '准备元数据...');
+
+      final contactInfo = await _getContactInfo(session.username);
+      final rawMyWxid = _databaseService.currentAccountWxid ?? '';
+      final trimmedMyWxid = rawMyWxid.trim();
+      final senderUsernames = <String>{
+        if (trimmedMyWxid.isNotEmpty) trimmedMyWxid,
+      };
+      final myWxid = _sanitizeUsername(rawMyWxid);
+      if (myWxid.isNotEmpty) {
+        senderUsernames.add(myWxid);
+      }
+
+      final senderDisplayNames = <String, String>{};
+
+      final myContactInfo = rawMyWxid.isNotEmpty
+          ? await _getContactInfo(rawMyWxid)
+          : <String, String>{};
+      final myDisplayName = await _buildMyDisplayName(rawMyWxid, myContactInfo);
+
+      if (filePath == null) {
+        final suggestedName =
+            '${session.displayName ?? session.username}_聊天记录_${DateTime.now().millisecondsSinceEpoch}.json';
+        final outputFile = await FilePicker.platform.saveFile(
+          dialogTitle: '保存聊天记录',
+          fileName: suggestedName,
+        );
+        if (outputFile == null) return false;
+        filePath = outputFile;
+      }
+
+      final file = File(filePath);
+      final parentDir = file.parent;
+      if (!await parentDir.exists()) {
+        await parentDir.create(recursive: true);
+      }
+      sink = file.openWrite();
+
+      final sessionData = {
+        'wxid': _sanitizeUsername(session.username),
+        'nickname':
+            contactInfo['nickname'] ??
+            session.displayName ??
+            session.username,
+        'remark': _getRemarkOrAlias(contactInfo),
+        'displayName': session.displayName ?? session.username,
+        'type': session.typeDescription,
+        'lastTimestamp': session.lastTimestamp,
+        'messageCount': totalMessages,
+      };
+      final exportTime = DateTime.now().toIso8601String();
+
+      sink.writeln('{');
+      sink.writeln('  "session": ${jsonEncode(sessionData)},');
+      sink.write('  "messages": [');
+
+      var isFirst = true;
+      var processed = 0;
+      await _databaseService.exportSessionMessages(
+        session.username,
+        (batch) async {
+          final newUsernames = _collectSenderUsernames(
+            batch,
+            senderUsernames,
+            senderDisplayNames,
+          );
+          await _ensureSenderDisplayNames(newUsernames, senderDisplayNames);
+          for (final msg in batch) {
+            final item = _buildJsonMessageItem(
+              msg: msg,
+              session: session,
+              contactInfo: contactInfo,
+              myContactInfo: myContactInfo,
+              senderDisplayNames: senderDisplayNames,
+              rawMyWxid: rawMyWxid,
+              myDisplayName: myDisplayName,
+              myWxid: myWxid,
+            );
+            final encoded = jsonEncode(item);
+            if (!isFirst) {
+              sink!.write(',');
+            }
+            sink!.write('\n    ');
+            sink.write(encoded);
+            isFirst = false;
+            processed += 1;
+          }
+          onProgress?.call(processed, totalMessages, '处理消息数据...');
+        },
+        exportBatchSize: exportBatchSize,
+        begintimestamp: begintimestamp,
+        endTimestamp: endTimestamp,
+      );
+
+      onProgress?.call(totalMessages, totalMessages, '构建头像索引...');
+      final avatars = await _buildAvatarIndexFromUsernames(
+        session: session,
+        senderUsernames: senderUsernames,
+        contactInfo: contactInfo,
+        senderDisplayNames: senderDisplayNames,
+        rawMyWxid: rawMyWxid,
+        myDisplayName: myDisplayName,
+      );
+
+      sink.write('\n  ],\n');
+      sink.writeln('  "avatars": ${jsonEncode(avatars)},');
+      sink.writeln('  "exportTime": "$exportTime"');
+      sink.writeln('}');
+
+      onProgress?.call(totalMessages, totalMessages, '写入文件...');
+      await sink.flush();
+      return true;
+    } catch (e, stack) {
+      await logger.error('ChatExportService', 'exportToJsonStream 失败: $e\n$stack');
+      return false;
+    } finally {
+      await sink?.close();
+    }
+  }
+
+  /// 流式导出聊天记录为 HTML 格式
+  Future<bool> exportToHtmlStream(
+    ChatSession session, {
+    String? filePath,
+    void Function(int current, int total, String stage)? onProgress,
+    int exportBatchSize = 500,
+    int begintimestamp = 0,
+    int endTimestamp = 0,
+    int totalMessagesHint = 0,
+  }) async {
+    IOSink? sink;
+    try {
+      final totalMessages = totalMessagesHint > 0
+          ? totalMessagesHint
+          : await _safeGetMessageCount(session.username);
+      onProgress?.call(0, totalMessages, '准备元数据...');
+
+      final contactInfo = await _getContactInfo(session.username);
+      final rawMyWxid = _databaseService.currentAccountWxid ?? '';
+      final trimmedMyWxid = rawMyWxid.trim();
+      final senderUsernames = <String>{
+        if (trimmedMyWxid.isNotEmpty) trimmedMyWxid,
+      };
+      final myWxid = _sanitizeUsername(rawMyWxid);
+      if (myWxid.isNotEmpty) {
+        senderUsernames.add(myWxid);
+      }
+
+      final senderDisplayNames = <String, String>{};
+
+      final myContactInfo = rawMyWxid.isNotEmpty
+          ? await _getContactInfo(rawMyWxid)
+          : <String, String>{};
+      final myDisplayName = await _buildMyDisplayName(rawMyWxid, myContactInfo);
+
+      if (filePath == null) {
+        final suggestedName =
+            '${session.displayName ?? session.username}_聊天记录_${DateTime.now().millisecondsSinceEpoch}.html';
+        final outputFile = await FilePicker.platform.saveFile(
+          dialogTitle: '保存聊天记录',
+          fileName: suggestedName,
+        );
+        if (outputFile == null) return false;
+        filePath = outputFile;
+      }
+
+      final file = File(filePath);
+      final parentDir = file.parent;
+      if (!await parentDir.exists()) {
+        await parentDir.create(recursive: true);
+      }
+      sink = file.openWrite();
+
+      final exportTime = DateTime.now().toString().split('.')[0];
+      sink.write(
+        _buildHtmlHeaderStream(
+          session: session,
+          contactInfo: contactInfo,
+          totalMessages: totalMessages,
+          exportTime: exportTime,
+        ),
+      );
+
+      var isFirst = true;
+      var processed = 0;
+      await _databaseService.exportSessionMessages(
+        session.username,
+        (batch) async {
+          final newUsernames = _collectSenderUsernames(
+            batch,
+            senderUsernames,
+            senderDisplayNames,
+          );
+          await _ensureSenderDisplayNames(newUsernames, senderDisplayNames);
+          for (final msg in batch) {
+            final item = _buildHtmlMessageData(
+              msg: msg,
+              session: session,
+              senderDisplayNames: senderDisplayNames,
+              myWxid: myWxid,
+              contactInfo: contactInfo,
+              myDisplayName: myDisplayName,
+            );
+            final encoded = jsonEncode(item);
+            if (!isFirst) {
+              sink!.write(',');
+            }
+            sink!.write('\n    ');
+            sink.write(encoded);
+            isFirst = false;
+            processed += 1;
+          }
+          onProgress?.call(processed, totalMessages, '处理消息数据...');
+        },
+        exportBatchSize: exportBatchSize,
+        begintimestamp: begintimestamp,
+        endTimestamp: endTimestamp,
+      );
+
+      onProgress?.call(totalMessages, totalMessages, '构建头像索引...');
+      final avatars = await _buildAvatarIndexFromUsernames(
+        session: session,
+        senderUsernames: senderUsernames,
+        contactInfo: contactInfo,
+        senderDisplayNames: senderDisplayNames,
+        rawMyWxid: rawMyWxid,
+        myDisplayName: myDisplayName,
+      );
+
+      sink.write('\n  ];\n');
+      sink.write(_buildHtmlFooterStream(avatars));
+
+      onProgress?.call(totalMessages, totalMessages, '写入文件...');
+      await sink.flush();
+      return true;
+    } catch (e, stack) {
+      await logger.error('ChatExportService', 'exportToHtmlStream 失败: $e\n$stack');
+      return false;
+    } finally {
+      await sink?.close();
+    }
+  }
+
+  /// 流式导出聊天记录为 Excel 格式
+  Future<bool> exportToExcelStream(
+    ChatSession session, {
+    String? filePath,
+    void Function(int current, int total, String stage)? onProgress,
+    int exportBatchSize = 500,
+    int begintimestamp = 0,
+    int endTimestamp = 0,
+    int totalMessagesHint = 0,
+  }) async {
+    final Workbook workbook = Workbook();
+    try {
+      final totalMessages = totalMessagesHint > 0
+          ? totalMessagesHint
+          : await _safeGetMessageCount(session.username);
+      onProgress?.call(0, totalMessages, '准备工作簿...');
+
+      final contactInfo = await _getContactInfo(session.username);
+
+      Worksheet sheet;
+      if (workbook.worksheets.count > 0) {
+        sheet = workbook.worksheets[0];
+        sheet.name = '聊天记录';
+      } else {
+        sheet = workbook.worksheets.addWithName('聊天记录');
+      }
+      int currentRow = 1;
+
+      _setTextSafe(sheet, currentRow, 1, '会话信息');
+      currentRow++;
+
+      _setTextSafe(sheet, currentRow, 1, '微信ID');
+      _setTextSafe(sheet, currentRow, 2, _sanitizeUsername(session.username));
+      _setTextSafe(sheet, currentRow, 3, '昵称');
+      _setTextSafe(sheet, currentRow, 4, contactInfo['nickname'] ?? '');
+      _setTextSafe(sheet, currentRow, 5, '备注');
+      _setTextSafe(sheet, currentRow, 6, _getRemarkOrAlias(contactInfo));
+      currentRow++;
+      currentRow++;
+
+      _setTextSafe(sheet, currentRow, 1, '序号');
+      _setTextSafe(sheet, currentRow, 2, '时间');
+      _setTextSafe(sheet, currentRow, 3, '发送者昵称');
+      _setTextSafe(sheet, currentRow, 4, '发送者微信ID');
+      _setTextSafe(sheet, currentRow, 5, '发送者备注');
+      _setTextSafe(sheet, currentRow, 6, '发送者身份');
+      _setTextSafe(sheet, currentRow, 7, '消息类型');
+      _setTextSafe(sheet, currentRow, 8, '内容');
+      currentRow++;
+
+      final rawAccountWxid = _databaseService.currentAccountWxid ?? '';
+      final trimmedAccountWxid = rawAccountWxid.trim();
+      final senderUsernames = <String>{
+        if (trimmedAccountWxid.isNotEmpty) trimmedAccountWxid,
+      };
+      final currentAccountWxid = _sanitizeUsername(rawAccountWxid);
+      if (currentAccountWxid.isNotEmpty) {
+        senderUsernames.add(currentAccountWxid);
+      }
+
+      final senderDisplayNames = <String, String>{};
+
+      final senderContactInfos = <String, Map<String, String>>{};
+
+      final currentAccountInfo = rawAccountWxid.isNotEmpty
+          ? await _getContactInfo(rawAccountWxid)
+          : <String, String>{};
+      final myDisplayName = await _buildMyDisplayName(
+        rawAccountWxid,
+        currentAccountInfo,
+      );
+      if (currentAccountWxid.isNotEmpty) {
+        senderContactInfos[currentAccountWxid] = currentAccountInfo;
+      }
+      if (trimmedAccountWxid.isNotEmpty) {
+        senderContactInfos[trimmedAccountWxid] = currentAccountInfo;
+      }
+
+      var index = 0;
+      await _databaseService.exportSessionMessages(
+        session.username,
+        (batch) async {
+          final newUsernames = _collectSenderUsernames(
+            batch,
+            senderUsernames,
+            senderDisplayNames,
+          );
+          await _ensureSenderDisplayNames(newUsernames, senderDisplayNames);
+          await _ensureSenderContactInfos(newUsernames, senderContactInfos);
+          for (final msg in batch) {
+            index += 1;
+            String senderRole;
+            String senderWxid;
+            String senderNickname;
+            String senderRemark;
+
+            if (msg.isSend == 1) {
+              senderRole = '我';
+              senderWxid = currentAccountWxid;
+              senderNickname = myDisplayName;
+              senderRemark = _getRemarkOrAlias(currentAccountInfo);
+            } else if (session.isGroup && msg.senderUsername != null) {
+              senderRole = senderDisplayNames[msg.senderUsername] ?? '群成员';
+              senderWxid = _sanitizeUsername(msg.senderUsername ?? '');
+              final info = senderContactInfos[msg.senderUsername] ?? {};
+              senderNickname = _resolvePreferredName(info, fallback: senderRole);
+              senderRemark = _getRemarkOrAlias(info);
+            } else {
+              senderRole = session.displayName ?? session.username;
+              senderWxid = _sanitizeUsername(session.username);
+              senderNickname = _resolvePreferredName(
+                contactInfo,
+                fallback: senderRole,
+              );
+              senderRemark = _getRemarkOrAlias(contactInfo);
+            }
+
+            senderWxid = _sanitizeUsername(senderWxid);
+
+            sheet.getRangeByIndex(currentRow, 1).setNumber(index.toDouble());
+            _setTextSafe(sheet, currentRow, 2, msg.formattedCreateTime);
+            _setTextSafe(sheet, currentRow, 3, senderNickname);
+            _setTextSafe(sheet, currentRow, 4, senderWxid);
+            _setTextSafe(sheet, currentRow, 5, senderRemark);
+            _setTextSafe(sheet, currentRow, 6, senderRole);
+            _setTextSafe(sheet, currentRow, 7, msg.typeDescription);
+            _setTextSafe(sheet, currentRow, 8, msg.displayContent);
+            currentRow++;
+          }
+
+          if (index % 500 == 0) {
+            onProgress?.call(index, totalMessages, '处理消息数据...');
+          }
+        },
+        exportBatchSize: exportBatchSize,
+        begintimestamp: begintimestamp,
+        endTimestamp: endTimestamp,
+      );
+      onProgress?.call(index, totalMessages, '处理消息数据...');
+
+      final avatars = await _buildAvatarIndexFromUsernames(
+        session: session,
+        senderUsernames: senderUsernames,
+        contactInfo: contactInfo,
+        senderDisplayNames: senderDisplayNames,
+        rawMyWxid: rawAccountWxid,
+        myDisplayName: myDisplayName,
+      );
+
+      sheet.getRangeByIndex(1, 1).columnWidth = 8;
+      sheet.getRangeByIndex(1, 2).columnWidth = 20;
+      sheet.getRangeByIndex(1, 3).columnWidth = 20;
+      sheet.getRangeByIndex(1, 4).columnWidth = 25;
+      sheet.getRangeByIndex(1, 5).columnWidth = 20;
+      sheet.getRangeByIndex(1, 6).columnWidth = 18;
+      sheet.getRangeByIndex(1, 7).columnWidth = 12;
+      sheet.getRangeByIndex(1, 8).columnWidth = 50;
+
+      if (avatars.isNotEmpty) {
+        final avatarSheet = workbook.worksheets.addWithName('头像索引');
+        _setTextSafe(avatarSheet, 1, 1, '头像ID');
+        _setTextSafe(avatarSheet, 1, 2, '显示名称');
+        _setTextSafe(avatarSheet, 1, 3, 'Base64');
+        int avatarRow = 2;
+        avatars.forEach((key, meta) {
+          _setTextSafe(avatarSheet, avatarRow, 1, key);
+          _setTextSafe(avatarSheet, avatarRow, 2, meta['displayName'] ?? key);
+          _setTextSafe(avatarSheet, avatarRow, 3, meta['base64'] ?? '');
+          avatarRow++;
+        });
+        avatarSheet.getRangeByIndex(1, 1).columnWidth = 18;
+        avatarSheet.getRangeByIndex(1, 2).columnWidth = 24;
+        avatarSheet.getRangeByIndex(1, 3).columnWidth = 80;
+      }
+
+      if (filePath == null) {
+        final suggestedName =
+            '${session.displayName ?? session.username}_聊天记录_${DateTime.now().millisecondsSinceEpoch}.xlsx';
+        final outputFile = await FilePicker.platform.saveFile(
+          dialogTitle: '保存聊天记录',
+          fileName: suggestedName,
+        );
+        if (outputFile == null) {
+          workbook.dispose();
+          return false;
+        }
+        filePath = outputFile;
+      }
+
+      onProgress?.call(index, totalMessages, '保存工作簿...');
+      final List<int> bytes = workbook.saveAsStream();
+      workbook.dispose();
+
+      onProgress?.call(index, totalMessages, '写入文件...');
+      return await _writeBytesInBackground(filePath, Uint8List.fromList(bytes));
+    } catch (e, stack) {
+      workbook.dispose();
+      await logger.error('ChatExportService', 'exportToExcelStream 失败: $e\n$stack');
+      return false;
+    }
+  }
+
+  /// 流式导出聊天记录为 PostgreSQL 格式
+  Future<bool> exportToPostgreSQLStream(
+    ChatSession session, {
+    String? filePath,
+    void Function(int current, int total, String stage)? onProgress,
+    int exportBatchSize = 500,
+    int begintimestamp = 0,
+    int endTimestamp = 0,
+    int totalMessagesHint = 0,
+  }) async {
+    IOSink? sink;
+    try {
+      final totalMessages = totalMessagesHint > 0
+          ? totalMessagesHint
+          : await _safeGetMessageCount(session.username);
+      onProgress?.call(0, totalMessages, '准备元数据...');
+
+      final contactInfo = await _getContactInfo(session.username);
+      final rawAccountWxid = _databaseService.currentAccountWxid ?? '';
+      final trimmedAccountWxid = rawAccountWxid.trim();
+      final senderUsernames = <String>{
+        if (trimmedAccountWxid.isNotEmpty) trimmedAccountWxid,
+      };
+      final currentAccountWxid = _sanitizeUsername(rawAccountWxid);
+      if (currentAccountWxid.isNotEmpty) {
+        senderUsernames.add(currentAccountWxid);
+      }
+
+      final senderDisplayNames = <String, String>{};
+
+      final senderContactInfos = <String, Map<String, String>>{};
+
+      final currentAccountInfo = rawAccountWxid.isNotEmpty
+          ? await _getContactInfo(rawAccountWxid)
+          : <String, String>{};
+      final myDisplayName = await _buildMyDisplayName(
+        rawAccountWxid,
+        currentAccountInfo,
+      );
+      if (currentAccountWxid.isNotEmpty) {
+        senderContactInfos[currentAccountWxid] = currentAccountInfo;
+      }
+      if (trimmedAccountWxid.isNotEmpty) {
+        senderContactInfos[trimmedAccountWxid] = currentAccountInfo;
+      }
+
+      if (filePath == null) {
+        final suggestedName =
+            '${session.displayName ?? session.username}_聊天记录_${DateTime.now().millisecondsSinceEpoch}.sql';
+        final outputFile = await FilePicker.platform.saveFile(
+          dialogTitle: '保存聊天记录',
+          fileName: suggestedName,
+        );
+        if (outputFile == null) return false;
+        filePath = outputFile;
+      }
+
+      final file = File(filePath);
+      final parentDir = file.parent;
+      if (!await parentDir.exists()) {
+        await parentDir.create(recursive: true);
+      }
+      sink = file.openWrite();
+
+      sink.writeln(
+        'DROP TABLE IF EXISTS "public"."echotrace"; CREATE TABLE "public"."echotrace" ("id" int4 NOT NULL GENERATED BY DEFAULT AS IDENTITY ( INCREMENT 1 MINVALUE 1 MAXVALUE 2147483647 START 1 CACHE 1 ), "date" date, "time" time(6), "is_send" bool, "content" text COLLATE "pg_catalog"."default", "send_name" varchar(255) COLLATE "pg_catalog"."default", "timestamp" timestamp(6),   CONSTRAINT "echotrace_pkey" PRIMARY KEY ("id") );',
+      );
+      sink.writeln();
+      sink.writeln('ALTER TABLE "public"."echotrace" OWNER TO "postgres";');
+      sink.writeln();
+
+      if (totalMessages > 0) {
+        sink.writeln(
+          'INSERT INTO "public"."echotrace" ("date", "time", "is_send", "content", "send_name", "timestamp") VALUES',
+        );
+      }
+
+      var processed = 0;
+      var isFirst = true;
+      await _databaseService.exportSessionMessages(
+        session.username,
+        (batch) async {
+          final newUsernames = _collectSenderUsernames(
+            batch,
+            senderUsernames,
+            senderDisplayNames,
+          );
+          await _ensureSenderDisplayNames(newUsernames, senderDisplayNames);
+          await _ensureSenderContactInfos(newUsernames, senderContactInfos);
+          for (final msg in batch) {
+            String senderRole;
+            String senderNickname;
+
+            if (msg.isSend == 1) {
+              senderRole = '我';
+              senderNickname = myDisplayName;
+            } else if (session.isGroup && msg.senderUsername != null) {
+              senderRole = senderDisplayNames[msg.senderUsername] ?? '群成员';
+              final info = senderContactInfos[msg.senderUsername] ?? {};
+              senderNickname = _resolvePreferredName(info, fallback: senderRole);
+            } else {
+              senderRole = session.displayName ?? session.username;
+              senderNickname = _resolvePreferredName(
+                contactInfo,
+                fallback: senderRole,
+              );
+            }
+
+            final dt = DateTime.fromMillisecondsSinceEpoch(
+              msg.createTime * 1000,
+            );
+            final dateStr =
+                '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+            final timeStr =
+                '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}:${dt.second.toString().padLeft(2, '0')}';
+            final isSendBool = msg.isSend == 1 ? 'true' : 'false';
+            final contentEscaped = msg.displayContent.replaceAll("'", "''");
+            final sendNameEscaped = senderNickname.replaceAll("'", "''");
+            final timestampStr = '$dateStr $timeStr';
+
+            final line =
+                "('$dateStr', '$timeStr', $isSendBool, '$contentEscaped', '$sendNameEscaped', '$timestampStr')";
+            if (!isFirst) {
+              sink!.writeln(',');
+            }
+            sink!.write(line);
+            isFirst = false;
+            processed += 1;
+          }
+          onProgress?.call(processed, totalMessages, '生成 SQL...');
+        },
+        exportBatchSize: exportBatchSize,
+        begintimestamp: begintimestamp,
+        endTimestamp: endTimestamp,
+      );
+
+      if (totalMessages > 0) {
+        sink.writeln(';');
+      }
+
+      await sink.flush();
+      onProgress?.call(totalMessages, totalMessages, '写入文件...');
+      return true;
+    } catch (e, stack) {
+      await logger.error(
+        'ChatExportService',
+        'exportToPostgreSQLStream 失败: $e\n$stack',
+      );
+      return false;
+    } finally {
+      await sink?.close();
+    }
+  }
+
   /// 生成 HTML 内容
   String _generateHtml(
     ChatSession session,
@@ -1092,6 +1702,471 @@ class ChatExportService {
     return buffer.toString();
   }
 
+  Set<String> _collectSenderUsernames(
+    List<Message> batch,
+    Set<String> senderUsernames,
+    Map<String, String> senderDisplayNames,
+  ) {
+    final newUsernames = <String>{};
+    for (final msg in batch) {
+      final username = msg.senderUsername;
+      if (username == null || username.trim().isEmpty) {
+        continue;
+      }
+      senderUsernames.add(username);
+      if (!senderDisplayNames.containsKey(username)) {
+        newUsernames.add(username);
+      }
+    }
+    return newUsernames;
+  }
+
+  Future<void> _ensureSenderDisplayNames(
+    Set<String> newUsernames,
+    Map<String, String> senderDisplayNames,
+  ) async {
+    if (newUsernames.isEmpty) return;
+    try {
+      final names = await _databaseService.getDisplayNames(
+        newUsernames.toList(),
+      );
+      senderDisplayNames.addAll(names);
+    } catch (_) {}
+  }
+
+  Future<void> _ensureSenderContactInfos(
+    Set<String> newUsernames,
+    Map<String, Map<String, String>> senderContactInfos,
+  ) async {
+    if (newUsernames.isEmpty) return;
+    final futures = <Future<void>>[];
+    for (final username in newUsernames) {
+      if (senderContactInfos.containsKey(username)) continue;
+      futures.add(
+        _getContactInfo(username).then((info) {
+          senderContactInfos[username] = info;
+        }),
+      );
+    }
+    if (futures.isNotEmpty) {
+      await Future.wait(futures);
+    }
+  }
+
+  Future<Map<String, Map<String, String>>> _buildAvatarIndexFromUsernames({
+    required ChatSession session,
+    required Set<String> senderUsernames,
+    required Map<String, String> contactInfo,
+    required Map<String, String> senderDisplayNames,
+    required String rawMyWxid,
+    required String myDisplayName,
+  }) async {
+    final targets = <String>{
+      session.username,
+      rawMyWxid,
+      ...senderUsernames,
+    }..removeWhere((u) => u.trim().isEmpty);
+
+    if (targets.isEmpty) return {};
+
+    final avatarUrls = await _databaseService.getAvatarUrls(targets.toList());
+    if (avatarUrls.isEmpty) {
+      return {};
+    }
+
+    final base64ByKey = <String, String>{};
+    for (final entry in avatarUrls.entries) {
+      final key = _sanitizeUsername(entry.key);
+      if (key.isEmpty) continue;
+      final encoded = await _loadAvatarBase64(entry.value);
+      if (encoded != null && encoded.isNotEmpty) {
+        base64ByKey[key] = encoded;
+      }
+    }
+
+    if (base64ByKey.isEmpty) {
+      return {};
+    }
+
+    final nameByKey = <String, String>{};
+    void assignName(String username, String value) {
+      final key = _sanitizeUsername(username);
+      if (key.isEmpty || nameByKey.containsKey(key)) return;
+      final trimmed = value.trim();
+      nameByKey[key] = trimmed.isEmpty ? key : trimmed;
+    }
+
+    assignName(
+      session.username,
+      _resolvePreferredName(
+        contactInfo,
+        fallback: session.displayName ?? session.username,
+      ),
+    );
+    if (rawMyWxid.trim().isNotEmpty) {
+      assignName(rawMyWxid, myDisplayName);
+    }
+    senderDisplayNames.forEach((username, display) {
+      assignName(username, display);
+    });
+    base64ByKey.keys
+        .where((key) => !nameByKey.containsKey(key))
+        .forEach((key) => nameByKey[key] = key);
+
+    final merged = <String, Map<String, String>>{};
+    base64ByKey.forEach((key, value) {
+      merged[key] = {'displayName': nameByKey[key] ?? key, 'base64': value};
+    });
+
+    return merged;
+  }
+
+  Map<String, dynamic> _buildJsonMessageItem({
+    required Message msg,
+    required ChatSession session,
+    required Map<String, String> contactInfo,
+    required Map<String, String> myContactInfo,
+    required Map<String, String> senderDisplayNames,
+    required String rawMyWxid,
+    required String myDisplayName,
+    required String myWxid,
+  }) {
+    final isSend = msg.isSend == 1;
+    final senderName = _resolveSenderDisplayName(
+      msg: msg,
+      session: session,
+      isSend: isSend,
+      contactInfo: contactInfo,
+      myContactInfo: myContactInfo,
+      senderDisplayNames: senderDisplayNames,
+      myDisplayName: myDisplayName,
+    );
+    final senderWxid = _resolveSenderUsername(
+      msg: msg,
+      session: session,
+      isSend: isSend,
+      myWxid: myWxid,
+    );
+
+    final item = <String, dynamic>{
+      'localId': msg.localId,
+      'createTime': msg.createTime,
+      'formattedTime': msg.formattedCreateTime,
+      'type': msg.typeDescription,
+      'localType': msg.localType,
+      'content': msg.displayContent,
+      'isSend': msg.isSend,
+      'senderUsername': senderWxid.isEmpty ? null : senderWxid,
+      'senderDisplayName': senderName,
+      'senderAvatarKey': senderWxid.isEmpty ? null : senderWxid,
+      'source': msg.source,
+    };
+
+    if (msg.localType == 47) {
+      item['emojiMd5'] = msg.emojiMd5;
+    }
+
+    return item;
+  }
+
+  Map<String, dynamic> _buildHtmlMessageData({
+    required Message msg,
+    required ChatSession session,
+    required Map<String, String> senderDisplayNames,
+    required String myWxid,
+    required Map<String, String> contactInfo,
+    required String myDisplayName,
+  }) {
+    final msgDate = DateTime.fromMillisecondsSinceEpoch(
+      msg.createTime * 1000,
+    );
+    final isSend = msg.isSend == 1;
+
+    String senderName = '';
+    if (!isSend && session.isGroup && msg.senderUsername != null) {
+      senderName = senderDisplayNames[msg.senderUsername] ?? '群成员';
+    } else if (!isSend) {
+      senderName = _resolvePreferredName(
+        contactInfo,
+        fallback: session.displayName ?? session.username,
+      );
+    } else {
+      senderName = myDisplayName;
+    }
+    final avatarKey = _resolveSenderUsername(
+      msg: msg,
+      session: session,
+      isSend: isSend,
+      myWxid: myWxid,
+    );
+
+    return {
+      'date':
+          '${msgDate.year}-${msgDate.month.toString().padLeft(2, '0')}-${msgDate.day.toString().padLeft(2, '0')}',
+      'time':
+          '${msgDate.hour.toString().padLeft(2, '0')}:${msgDate.minute.toString().padLeft(2, '0')}:${msgDate.second.toString().padLeft(2, '0')}',
+      'isSend': isSend,
+      'content': msg.displayContent,
+      'senderName': senderName,
+      'timestamp': msg.createTime,
+      'avatarKey': avatarKey.isEmpty ? null : avatarKey,
+    };
+  }
+
+  String _buildHtmlHeaderStream({
+    required ChatSession session,
+    required Map<String, String> contactInfo,
+    required int totalMessages,
+    required String exportTime,
+  }) {
+    final buffer = StringBuffer();
+    buffer.writeln('<!DOCTYPE html>');
+    buffer.writeln('<html lang="zh-CN">');
+    buffer.writeln('<head>');
+    buffer.writeln('  <meta charset="UTF-8">');
+    buffer.writeln(
+      '  <meta name="viewport" content="width=device-width, initial-scale=1.0">',
+    );
+    buffer.writeln(
+      '  <title>${_escapeHtml(session.displayName ?? session.username)} - 聊天记录</title>',
+    );
+    buffer.writeln('  <style>');
+    buffer.writeln(_getHtmlStyles());
+    buffer.writeln('  </style>');
+    buffer.writeln('</head>');
+    buffer.writeln('<body>');
+    buffer.writeln('  <div class="container">');
+    buffer.writeln('    <div class="header">');
+    buffer.writeln('      <div class="header-main">');
+    buffer.writeln(
+      '        <h1>${_escapeHtml(session.displayName ?? session.username)}</h1>',
+    );
+
+    final nickname = contactInfo['nickname'] ?? '';
+    final remark = _getRemarkOrAlias(contactInfo);
+    final sanitizedSessionWxid = _sanitizeUsername(session.username);
+    final hasDetails =
+        nickname.isNotEmpty ||
+        remark.isNotEmpty ||
+        sanitizedSessionWxid.isNotEmpty;
+
+    if (hasDetails) {
+      buffer.writeln(
+        '        <button class="info-menu-btn" id="info-menu-btn" type="button" title="查看详细信息">',
+      );
+      buffer.writeln(
+        '          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">',
+      );
+      buffer.writeln('            <circle cx="12" cy="12" r="1"></circle>');
+      buffer.writeln('            <circle cx="12" cy="5" r="1"></circle>');
+      buffer.writeln('            <circle cx="12" cy="19" r="1"></circle>');
+      buffer.writeln('          </svg>');
+      buffer.writeln('        </button>');
+      buffer.writeln('      </div>');
+      buffer.writeln('      <div class="info-menu" id="info-menu">');
+      buffer.writeln('        <div class="info-menu-content">');
+      if (sanitizedSessionWxid.isNotEmpty) {
+        buffer.writeln('          <div class="info-item">');
+        buffer.writeln('            <span class="info-label">微信ID</span>');
+        buffer.writeln(
+          '            <span class="info-value">${_escapeHtml(sanitizedSessionWxid)}</span>',
+        );
+        buffer.writeln('          </div>');
+      }
+      if (nickname.isNotEmpty) {
+        buffer.writeln('          <div class="info-item">');
+        buffer.writeln('            <span class="info-label">昵称</span>');
+        buffer.writeln(
+          '            <span class="info-value">${_escapeHtml(nickname)}</span>',
+        );
+        buffer.writeln('          </div>');
+      }
+      if (remark.isNotEmpty) {
+        buffer.writeln('          <div class="info-item">');
+        buffer.writeln('            <span class="info-label">备注</span>');
+        buffer.writeln(
+          '            <span class="info-value">${_escapeHtml(remark)}</span>',
+        );
+        buffer.writeln('          </div>');
+      }
+      buffer.writeln('        </div>');
+      buffer.writeln('      </div>');
+    } else {
+      buffer.writeln('      </div>');
+    }
+
+    buffer.writeln('      <div class="info">');
+    buffer.writeln('        <span>${session.typeDescription}</span>');
+    buffer.writeln('        <span>共 $totalMessages 条消息</span>');
+    buffer.writeln('        <span>导出时间: $exportTime</span>');
+    buffer.writeln('      </div>');
+    buffer.writeln('    </div>');
+    buffer.writeln('    <div class="messages" id="messages-container">');
+    buffer.writeln('      <div class="loading">正在加载消息...</div>');
+    buffer.writeln('    </div>');
+    buffer.writeln(
+      '    <div class="scroll-to-bottom" id="scroll-to-bottom" title="回到底部">↓</div>',
+    );
+    buffer.writeln('  </div>');
+    buffer.writeln('  <script>');
+    buffer.writeln('    const messagesData = [');
+    return buffer.toString();
+  }
+
+  String _buildHtmlFooterStream(Map<String, Map<String, String>> avatarIndex) {
+    final buffer = StringBuffer();
+    buffer.writeln('    const avatarIndex = ${jsonEncode(avatarIndex)};');
+    buffer.writeln('    const INITIAL_BATCH = 100; // 首次加载最新100条');
+    buffer.writeln('    const BATCH_SIZE = 200; // 后续每批200条');
+    buffer.writeln('    let loadedStart = messagesData.length; // 从末尾开始加载');
+    buffer.writeln('    let isLoading = false;');
+    buffer.writeln('    let allLoaded = false;');
+    buffer.writeln('    ');
+    buffer.writeln('    function createMessageElement(msg, showDate) {');
+    buffer.writeln('      const fragment = document.createDocumentFragment();');
+    buffer.writeln('      if (showDate) {');
+    buffer.writeln('        const dateDivider = document.createElement("div");');
+    buffer.writeln('        dateDivider.className = "date-divider";');
+    buffer.writeln('        dateDivider.textContent = msg.date;');
+    buffer.writeln('        fragment.appendChild(dateDivider);');
+    buffer.writeln('      }');
+    buffer.writeln('      const messageEl = document.createElement("div");');
+    buffer.writeln(
+      '      messageEl.className = `message \${msg.isSend ? "sent" : "received"}`;',
+    );
+    buffer.writeln(
+      '      const avatarHtml = msg.avatarKey && avatarIndex[msg.avatarKey] ?',
+    );
+    buffer.writeln(
+      '        `<div class="avatar"><img src="data:image/png;base64,\${avatarIndex[msg.avatarKey].base64}" alt="\${avatarIndex[msg.avatarKey].displayName}"/></div>` :',
+    );
+    buffer.writeln('        `<div class="avatar placeholder"></div>`;');
+    buffer.writeln(
+      '      messageEl.innerHTML = `\${avatarHtml}<div class="bubble"><div class="sender">\${msg.senderName}</div><div class="content">\${msg.content}</div><div class="time">\${msg.time}</div></div>`;',
+    );
+    buffer.writeln('      fragment.appendChild(messageEl);');
+    buffer.writeln('      return fragment;');
+    buffer.writeln('    }');
+    buffer.writeln('    ');
+    buffer.writeln('    function renderMessages(start, end, toTop = true) {');
+    buffer.writeln('      const container = document.getElementById("messages-container");');
+    buffer.writeln('      if (!container) return;');
+    buffer.writeln('      const fragment = document.createDocumentFragment();');
+    buffer.writeln('      let lastDate = null;');
+    buffer.writeln('      for (let i = start; i < end; i++) {');
+    buffer.writeln('        const msg = messagesData[i];');
+    buffer.writeln('        const showDate = msg.date !== lastDate;');
+    buffer.writeln('        lastDate = msg.date;');
+    buffer.writeln('        fragment.appendChild(createMessageElement(msg, showDate));');
+    buffer.writeln('      }');
+    buffer.writeln('      if (toTop) {');
+    buffer.writeln('        container.insertBefore(fragment, container.firstChild);');
+    buffer.writeln('      } else {');
+    buffer.writeln('        container.appendChild(fragment);');
+    buffer.writeln('      }');
+    buffer.writeln('    }');
+    buffer.writeln('    ');
+    buffer.writeln('    function loadInitialMessages() {');
+    buffer.writeln('      const container = document.getElementById("messages-container");');
+    buffer.writeln('      if (!container) return;');
+    buffer.writeln('      container.innerHTML = "";');
+    buffer.writeln(
+      '      const start = Math.max(0, messagesData.length - INITIAL_BATCH);',
+    );
+    buffer.writeln('      renderMessages(start, messagesData.length, false);');
+    buffer.writeln('      loadedStart = start;');
+    buffer.writeln('      if (start === 0) allLoaded = true;');
+    buffer.writeln('      const scrollToBottomBtn = document.getElementById("scroll-to-bottom");');
+    buffer.writeln('      if (scrollToBottomBtn) {');
+    buffer.writeln('        scrollToBottomBtn.classList.remove("visible");');
+    buffer.writeln('      }');
+    buffer.writeln('    }');
+    buffer.writeln('    ');
+    buffer.writeln('    function loadMoreMessages() {');
+    buffer.writeln('      if (isLoading || allLoaded) return;');
+    buffer.writeln('      isLoading = true;');
+    buffer.writeln('      const container = document.getElementById("messages-container");');
+    buffer.writeln('      if (!container) return;');
+    buffer.writeln('      const scrollHeightBefore = container.scrollHeight;');
+    buffer.writeln('      const newStart = Math.max(0, loadedStart - BATCH_SIZE);');
+    buffer.writeln('      renderMessages(newStart, loadedStart, true);');
+    buffer.writeln('      loadedStart = newStart;');
+    buffer.writeln('      if (newStart === 0) allLoaded = true;');
+    buffer.writeln('      const scrollHeightAfter = container.scrollHeight;');
+    buffer.writeln(
+      '      container.scrollTop += scrollHeightAfter - scrollHeightBefore;',
+    );
+    buffer.writeln('      isLoading = false;');
+    buffer.writeln('    }');
+    buffer.writeln('    ');
+    buffer.writeln('    function toggleInfoMenu() {');
+    buffer.writeln('      const menu = document.getElementById("info-menu");');
+    buffer.writeln('      if (!menu) return;');
+    buffer.writeln('      menu.classList.toggle("show");');
+    buffer.writeln('    }');
+    buffer.writeln('    ');
+    buffer.writeln('    function handleScroll() {');
+    buffer.writeln('      const container = document.getElementById("messages-container");');
+    buffer.writeln('      if (!container) return;');
+    buffer.writeln('      if (container.scrollTop < 200 && !allLoaded) {');
+    buffer.writeln('        loadMoreMessages();');
+    buffer.writeln('      }');
+    buffer.writeln('      const scrollToBottomBtn = document.getElementById("scroll-to-bottom");');
+    buffer.writeln('      if (scrollToBottomBtn) {');
+    buffer.writeln(
+      '        const isBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100;',
+    );
+    buffer.writeln('        scrollToBottomBtn.classList.toggle("visible", !isBottom);');
+    buffer.writeln('      }');
+    buffer.writeln('    }');
+    buffer.writeln('    ');
+    buffer.writeln('    function scrollToBottom() {');
+    buffer.writeln('      const container = document.getElementById("messages-container");');
+    buffer.writeln('      if (!container) return;');
+    buffer.writeln(
+      '      container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });',
+    );
+    buffer.writeln('    }');
+    buffer.writeln('    ');
+    buffer.writeln('    document.addEventListener("click", (e) => {');
+    buffer.writeln('      const menu = document.getElementById("info-menu");');
+    buffer.writeln(
+      '      const btn = document.getElementById("info-menu-btn");',
+    );
+    buffer.writeln(
+      '      if (menu && btn && !menu.contains(e.target) && !btn.contains(e.target)) {',
+    );
+    buffer.writeln('        menu.classList.remove("show");');
+    buffer.writeln('      }');
+    buffer.writeln('    });');
+    buffer.writeln('    ');
+    buffer.writeln(
+      '    const infoMenuBtn = document.getElementById("info-menu-btn");',
+    );
+    buffer.writeln('    if (infoMenuBtn) {');
+    buffer.writeln('      infoMenuBtn.addEventListener("click", (event) => {');
+    buffer.writeln('        event.stopPropagation();');
+    buffer.writeln('        toggleInfoMenu();');
+    buffer.writeln('      });');
+    buffer.writeln('    }');
+    buffer.writeln('    ');
+    buffer.writeln('    window.addEventListener("DOMContentLoaded", () => {');
+    buffer.writeln('      loadInitialMessages();');
+    buffer.writeln('      const container = document.getElementById("messages-container");');
+    buffer.writeln('      if (container) {');
+    buffer.writeln('        container.addEventListener("scroll", handleScroll);');
+    buffer.writeln('      }');
+    buffer.writeln('      const scrollToBottomBtn = document.getElementById("scroll-to-bottom");');
+    buffer.writeln('      if (scrollToBottomBtn) {');
+    buffer.writeln('        scrollToBottomBtn.addEventListener("click", scrollToBottom);');
+    buffer.writeln('      }');
+    buffer.writeln('    });');
+    buffer.writeln('  </script>');
+    buffer.writeln('</body>');
+    buffer.writeln('</html>');
+    return buffer.toString();
+  }
+
   Future<Map<String, Map<String, String>>> _buildAvatarIndex({
     required ChatSession session,
     required List<Message> messages,
@@ -1223,11 +2298,35 @@ class ChatExportService {
     return '';
   }
 
+  Future<int> _safeGetMessageCount(String sessionId) async {
+    try {
+      return await _databaseService.getMessageCount(sessionId);
+    } catch (_) {
+      return 0;
+    }
+  }
+
+
   String _sanitizeForExcel(String? value) {
     if (value == null || value.isEmpty) {
       return '';
     }
-    return value.replaceAll(_invalidXmlChars, '');
+
+    // XML 1.0 valid chars: #x9 | #xA | #xD | #x20-#xD7FF | #xE000-#xFFFD | #x10000-#x10FFFF
+    final buffer = StringBuffer();
+    for (final rune in value.runes) {
+      if (rune == 0x9 || rune == 0xA || rune == 0xD) {
+        buffer.writeCharCode(rune);
+        continue;
+      }
+      final inBasicPlane = rune >= 0x20 && rune <= 0xD7FF;
+      final inSupplementary = rune >= 0xE000 && rune <= 0xFFFD;
+      final inAstral = rune >= 0x10000 && rune <= 0x10FFFF;
+      if (inBasicPlane || inSupplementary || inAstral) {
+        buffer.writeCharCode(rune);
+      }
+    }
+    return buffer.toString();
   }
 
   void _setTextSafe(Worksheet sheet, int row, int column, String? value) {
@@ -2195,3 +3294,4 @@ class ChatExportService {
         .replaceAll(RegExp(r'[ \t\r\n]+$'), '');
   }
 }
+

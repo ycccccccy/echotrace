@@ -1478,9 +1478,7 @@ class _SettingsPageState extends State<SettingsPage>
     if (!mounted) return;
 
     if (cachedYears.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('暂无缓存数据'), backgroundColor: Colors.orange),
-      );
+      _toast.show(context, '暂无缓存数据', success: false);
       return;
     }
 
@@ -1561,16 +1559,7 @@ class _SettingsPageState extends State<SettingsPage>
               await AnnualReportCacheService.clearAllReports();
               if (context.mounted) {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('已清除所有缓存'),
-                    backgroundColor: Colors.green,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                );
+                _toast.show(this.context, '已清除所有缓存');
               }
             },
             style: FilledButton.styleFrom(
@@ -1591,12 +1580,7 @@ class _SettingsPageState extends State<SettingsPage>
     if (!mounted) return;
 
     if (cacheCount == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('暂无双人年度报告缓存'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      _toast.show(context, '暂无双人年度报告缓存', success: false);
       return;
     }
 
@@ -1681,16 +1665,7 @@ class _SettingsPageState extends State<SettingsPage>
               await DualReportCacheService.clearAllReports();
               if (context.mounted) {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('已清除所有双人年度报告缓存'),
-                    backgroundColor: Colors.green,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                );
+                _toast.show(this.context, '已清除所有双人年度报告缓存');
               }
             },
             style: FilledButton.styleFrom(
@@ -1897,11 +1872,9 @@ class _SettingsPageState extends State<SettingsPage>
                       await logger.setDebugMode(value);
 
                       if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('调试模式已${value ? "开启" : "关闭"}'),
-                            duration: const Duration(seconds: 2),
-                          ),
+                        _toast.show(
+                          context,
+                          '调试模式已${value ? "开启" : "关闭"}',
                         );
                       }
                     },
@@ -2041,16 +2014,7 @@ class _SettingsPageState extends State<SettingsPage>
               await logger.clearLogs();
               if (context.mounted) {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('已清空日志'),
-                    backgroundColor: Colors.green,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                );
+                _toast.show(this.context, '已清空日志');
                 // 刷新页面以更新日志信息
                 setState(() {});
               }

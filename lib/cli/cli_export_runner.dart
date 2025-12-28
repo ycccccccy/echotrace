@@ -148,21 +148,21 @@ class CliExportRunner {
           case 'json':
             success = await exportService.exportToJson(
               session,
-              messages.reversed.toList(),
+              messages,
               filePath: filePath,
             );
             break;
           case 'html':
             success = await exportService.exportToHtml(
               session,
-              messages.reversed.toList(),
+              messages,
               filePath: filePath,
             );
             break;
           case 'excel':
             success = await exportService.exportToExcel(
               session,
-              messages.reversed.toList(),
+              messages,
               filePath: filePath,
             );
             break;
@@ -328,6 +328,7 @@ class CliExportRunner {
         sessionId,
         startTimestamp,
         endTimestamp,
+        ascending: true,
       );
     }
 
@@ -337,7 +338,6 @@ class CliExportRunner {
     final results = <Message>[];
     final seenLocalIds = <int>{};
 
-    // 尽量获取总数，若失败则回退到 unknown count
     int? totalCount;
     try {
       totalCount = await databaseService.getMessageCount(sessionId);
@@ -369,6 +369,12 @@ class CliExportRunner {
       if (batch.length < batchSize) break;
     }
 
+    results.sort((a, b) {
+      if (a.createTime != b.createTime) {
+        return a.createTime.compareTo(b.createTime);
+      }
+      return a.localId.compareTo(b.localId);
+    });
     return results;
   }
 

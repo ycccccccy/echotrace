@@ -1470,8 +1470,14 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
 
         if (!mounted) return;
 
-        // 1. 扫描阶段
-        List<Message> allMessages = [];
+        // 获取会话详情
+        ChatSession? targetSession = widget.allSessions
+            .where((s) => s.username == username)
+            .firstOrNull;
+        if (targetSession == null) {
+          _failedCount++;
+          continue;
+        }
 
         // 先获取消息总数，以便展示确定性进度条
         int totalToScan = 0;
@@ -1485,104 +1491,68 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
           _progress = totalToScan > 0 ? 0.0 : -1.0;
           _currentSessionName = displayName;
           _exportedCountNotifier.value = 0;
-          _currentStage = ''; // 重置状态
+          _currentStage = '读取消息...';
         });
 
-        int offset = 0;
-        // 动态计算批次大小：目标是将扫描过程分为约 40 步更新，
-        // 但限制在 [500, 10000] 之间以平衡查询效率与 UI 响应速度
+        // 批量读取消息并收集为大列表（一次性导出，但进度实时更新）
+        final List<Message> allMessages = [];
         final int batchSize = (totalToScan > 0)
             ? (totalToScan / 40).floor().clamp(500, 10000)
             : 2000;
-        bool hasMore = true;
-
-        while (hasMore) {
-          final batch = await dbService.getMessages(
-            username,
-            limit: batchSize,
-            offset: offset,
-          );
-
-          if (batch.isEmpty) {
-            hasMore = false;
-          } else {
-            final latestInBatch = batch.first.createTime;
-            final earliestInBatch = batch.last.createTime;
-
-            if (startTime != null && latestInBatch < startTime) {
-              hasMore = false;
-              break;
-            }
-
-            final filteredBatch = batch.where((m) {
-              if (startTime != null && m.createTime < startTime) return false;
-              if (endTime != null && m.createTime > endTime) return false;
-              return true;
-            }).toList();
-
-            allMessages.addAll(filteredBatch);
-
-            if (startTime != null && earliestInBatch < startTime) {
-              hasMore = false;
-            }
-
-            if (batch.length < batchSize) {
-              hasMore = false;
-            }
-            offset += batch.length;
-
+        int scannedCount = 0;
+        await dbService.exportSessionMessages(
+          username,
+          (batch) async {
+            allMessages.addAll(batch);
+            scannedCount += batch.length;
             if (!mounted) return;
-
-            // 更新条数通知器
-            _exportedCountNotifier.value = allMessages.length;
-
-            // 如果知道总数，则更新扫描阶段的平滑进度
+            _exportedCountNotifier.value = scannedCount;
             if (totalToScan > 0) {
               setState(() {
-                // 扫描阶段占该会话进度的 85%
-                _progress = (offset / totalToScan).clamp(0.0, 1.0) * 0.85;
+                _progress =
+                    (scannedCount / totalToScan).clamp(0.0, 1.0) * 0.85;
               });
             }
+          },
+          exportBatchSize: batchSize,
+          begintimestamp: startTime ?? 0,
+          endTimestamp: endTime ?? 0,
+        );
 
-            // 出让主线程控制权
-            await Future.delayed(const Duration(milliseconds: 10));
-          }
-        }
-
-        // 2. 写入阶段
-        if (!mounted) return;
-        setState(() {
-          _progress = 0.85; // 扫描完成，进度来到 85%
-          _currentSessionName = "正在写入 $displayName...";
-          _exportedCountNotifier.value = 0;
-          _currentStage = '';
-        });
-
-        // 排序与导出逻辑...
-        allMessages.sort((a, b) => a.createTime.compareTo(b.createTime));
-        await Future.delayed(Duration.zero);
-
-        ChatSession? targetSession = widget.allSessions
-            .where((s) => s.username == username)
-            .firstOrNull;
-        if (targetSession == null) {
+        if (allMessages.isEmpty) {
           _failedCount++;
           continue;
         }
 
-        final safeName = displayName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-        final savePath =
-            '${widget.exportFolder}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.${widget.format}';
+        if (!mounted) return;
 
+        var processedCount = 0;
         void onExportProgress(int current, int total, String stage) {
           if (!mounted) return;
+          processedCount = current;
           _exportedCountNotifier.value = current;
           if (_currentStage != stage) {
             setState(() {
               _currentStage = stage;
             });
           }
+          final effectiveTotal = total > 0 ? total : totalToScan;
+          if (effectiveTotal > 0) {
+            final ratio = (current / effectiveTotal).clamp(0.0, 1.0);
+            final phaseWeight = stage == '写入文件...' ||
+                    stage == '保存工作簿...' ||
+                    stage == '构建头像索引...'
+                ? 0.98
+                : 0.9;
+            setState(() {
+              _progress = (ratio * phaseWeight).clamp(0.0, 0.98);
+            });
+          }
         }
+
+        final safeName = displayName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+        final savePath =
+            '${widget.exportFolder}/${safeName}_${DateTime.now().millisecondsSinceEpoch}.${widget.format}';
 
         bool result = false;
         switch (widget.format) {
@@ -1630,7 +1600,7 @@ class _ExportProgressDialogState extends State<_ExportProgressDialog> {
         setState(() {
           if (result) {
             _successCount++;
-            _totalMessagesProcessed += allMessages.length;
+            _totalMessagesProcessed += processedCount;
           } else {
             _failedCount++;
           }

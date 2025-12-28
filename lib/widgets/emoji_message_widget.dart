@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
@@ -24,6 +25,10 @@ class _EmojiMessageWidgetState extends State<EmojiMessageWidget> {
   String? _localPath;
   String? _errorMessage;
   bool _isLoading = true;
+  late final Size _layoutSize;
+  static const double _minEmojiSize = 60;
+  static const double _maxEmojiSize = 140;
+  static const double _fallbackEmojiSize = 90;
 
   static final Map<String, String> _cachedPaths = {};
   static final Map<String, Future<String?>> _inflight = {};
@@ -31,6 +36,7 @@ class _EmojiMessageWidgetState extends State<EmojiMessageWidget> {
   @override
   void initState() {
     super.initState();
+    _layoutSize = _resolveLayoutSize();
     _loadEmoji();
   }
 
@@ -226,47 +232,48 @@ class _EmojiMessageWidgetState extends State<EmojiMessageWidget> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Container(
-        width: 90,
-        height: 90,
-        decoration: BoxDecoration(
-          color: Colors.grey[200],
-          borderRadius: BorderRadius.circular(8),
+      return _buildSizedFrame(
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.grey[200],
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Center(
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
         ),
-        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
       );
     }
 
     if (_localPath == null) {
-      return InkWell(
-        onTap: _loadEmoji,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: widget.isFromMe
-                ? Theme.of(context).colorScheme.primary
-                : Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            _errorMessage ?? '[动画表情]',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: widget.isFromMe
-                      ? Colors.white
-                      : Theme.of(context).colorScheme.onSurface,
-                ),
+      return _buildSizedFrame(
+        InkWell(
+          onTap: _loadEmoji,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: widget.isFromMe
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              _errorMessage ?? '[动画表情]',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: widget.isFromMe
+                        ? Colors.white
+                        : Theme.of(context).colorScheme.onSurface,
+                  ),
+              textAlign: TextAlign.center,
+            ),
           ),
         ),
       );
     }
 
-    return ConstrainedBox(
-      constraints: const BoxConstraints(
-        maxWidth: 140,
-        maxHeight: 140,
-        minWidth: 60,
-        minHeight: 60,
-      ),
+    return SizedBox(
+      width: _layoutSize.width,
+      height: _layoutSize.height,
       child: Image.file(
         File(_localPath!),
         fit: BoxFit.contain,
@@ -275,5 +282,62 @@ class _EmojiMessageWidgetState extends State<EmojiMessageWidget> {
         height: widget.message.emojiHeight?.toDouble(),
       ),
     );
+  }
+
+  Widget _buildSizedFrame(Widget child) {
+    final alignment =
+        widget.isFromMe ? Alignment.topRight : Alignment.topLeft;
+    return SizedBox(
+      width: _layoutSize.width,
+      height: _layoutSize.height,
+      child: Align(
+        alignment: alignment,
+        child: child,
+      ),
+    );
+  }
+
+  Size _resolveLayoutSize() {
+    final width = widget.message.emojiWidth?.toDouble();
+    final height = widget.message.emojiHeight?.toDouble();
+    if (width == null || height == null || width <= 0 || height <= 0) {
+      return const Size(_fallbackEmojiSize, _fallbackEmojiSize);
+    }
+    return _scaleToBounds(
+      Size(width, height),
+      minSize: _minEmojiSize,
+      maxSize: _maxEmojiSize,
+    );
+  }
+
+  Size _scaleToBounds(
+    Size raw, {
+    required double minSize,
+    required double maxSize,
+  }) {
+    var width = raw.width;
+    var height = raw.height;
+    if (width <= 0 || height <= 0) {
+      return const Size(_fallbackEmojiSize, _fallbackEmojiSize);
+    }
+    final maxDim = math.max(width, height);
+    if (maxDim > maxSize) {
+      final scale = maxSize / maxDim;
+      width *= scale;
+      height *= scale;
+    }
+    final minDim = math.min(width, height);
+    if (minDim < minSize && minDim > 0) {
+      final scale = minSize / minDim;
+      width *= scale;
+      height *= scale;
+      final capped = math.max(width, height);
+      if (capped > maxSize) {
+        final scaleDown = maxSize / capped;
+        width *= scaleDown;
+        height *= scaleDown;
+      }
+    }
+    return Size(width, height);
   }
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
@@ -64,12 +65,12 @@ class _ImageMessageWidgetState extends State<ImageMessageWidget> {
   static int _decodeInFlight = 0;
   static final Queue<Completer<void>> _decodeWaiters = Queue();
   static const List<_ImageVariant> _variantPriority = [
-    _ImageVariant.big,
     _ImageVariant.original,
     _ImageVariant.high,
+    _ImageVariant.big,
     _ImageVariant.cache,
-    _ImageVariant.thumb,
     _ImageVariant.other,
+    _ImageVariant.thumb,
   ];
   static bool _indexed = false;
   static Future<void>? _indexing;
@@ -78,6 +79,8 @@ class _ImageMessageWidgetState extends State<ImageMessageWidget> {
   static final ImageService _sharedImageService = ImageService();
   static Future<void>? _sharedImageInit;
   static String? _sharedImageDataPath;
+  static const double _minImageSize = 100;
+  static const double _maxImageSize = 260;
 
   @override
   void initState() {
@@ -110,13 +113,12 @@ class _ImageMessageWidgetState extends State<ImageMessageWidget> {
       if (dataPath != null) {
         // 获取图片路径
         if (widget.message.imageMd5 != null) {
-          final path = await imageService.getImagePath(
+          final hardlinkPath = await imageService.getImagePath(
             widget.message.imageMd5!,
             widget.sessionUsername,
           );
 
-          // 如果硬链表未命中，尝试已解密文件
-          if (path == null) {
+          if (hardlinkPath == null) {
             String? decodedPath =
                 await _findDecryptedImageByName(_datName, refresh: false);
             if (decodedPath == null && widget.message.imageMd5 != null) {
@@ -124,6 +126,10 @@ class _ImageMessageWidgetState extends State<ImageMessageWidget> {
                 widget.message.imageMd5,
                 refresh: false,
               );
+            }
+            if (decodedPath != null &&
+                !await _isImageUsable(decodedPath)) {
+              decodedPath = null;
             }
             _logDebugPaths(decodedPath);
             if (mounted) {
@@ -133,13 +139,17 @@ class _ImageMessageWidgetState extends State<ImageMessageWidget> {
                 _hasError = decodedPath == null;
               });
             }
-          } else if (mounted) {
-            _logDebugPaths(path);
-            setState(() {
-              _imagePath = path;
-              _isLoading = false;
-              _hasError = false;
-            });
+          } else {
+            final preferred =
+                await _resolvePreferredImagePath(hardlinkPath);
+            _logDebugPaths(preferred ?? hardlinkPath);
+            if (mounted) {
+              setState(() {
+                _imagePath = preferred;
+                _isLoading = false;
+                _hasError = preferred == null;
+              });
+            }
           }
         } else {
           // 仅 packed_info_data 的情况
@@ -150,6 +160,9 @@ class _ImageMessageWidgetState extends State<ImageMessageWidget> {
               widget.message.imageMd5,
               refresh: false,
             );
+          }
+          if (decodedPath != null && !await _isImageUsable(decodedPath)) {
+            decodedPath = null;
           }
           _logDebugPaths(decodedPath);
           if (mounted) {
@@ -183,75 +196,206 @@ class _ImageMessageWidgetState extends State<ImageMessageWidget> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Container(
-        width: 150,
-        height: 150,
-        decoration: BoxDecoration(
-          color: Colors.grey[200],
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-      );
-    }
+    final isFromMe = widget.isFromMe || widget.message.isSend == 1;
+    final alignment = isFromMe ? Alignment.topRight : Alignment.topLeft;
 
-    if (_hasError || _imagePath == null) {
-      return _buildErrorPlaceholder(context);
-    }
-
-    // 显示图片，带点击查看大图功能
-    return GestureDetector(
-      onTap: () => _showFullImage(context),
-      child: Hero(
-        tag: 'image_${widget.message.localId}',
-        child: Container(
-          constraints: const BoxConstraints(
-            maxWidth: 300,
-            maxHeight: 300,
-            minWidth: 100,
-            minHeight: 100,
-          ),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.1),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+      alignment: alignment,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (_isLoading) {
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(6),
               ),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: Image.file(
-              File(_imagePath!),
-              fit: BoxFit.cover,
-              cacheWidth: 600,
-              filterQuality: FilterQuality.low,
-              gaplessPlayback: true,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  width: 150,
-                  height: 150,
-                  color: Colors.grey[300],
-                  child: const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.broken_image, size: 48, color: Colors.grey),
-                      SizedBox(height: 8),
-                      Text(
-                        '[图片格式错误]',
-                        style: TextStyle(color: Colors.grey, fontSize: 12),
+              padding: const EdgeInsets.all(18),
+              child: const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+          }
+
+          if (_hasError || _imagePath == null) {
+            return _buildErrorPlaceholder(context);
+          }
+
+          final size = _resolveLayoutSize(constraints);
+          return GestureDetector(
+            onTap: () => _showFullImage(context),
+            child: Hero(
+              tag: 'image_${widget.message.localId}',
+              child: SizedBox(
+                width: size.width,
+                height: size.height,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(6),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
-                );
-              },
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Image.file(
+                      File(_imagePath!),
+                      fit: BoxFit.cover,
+                      cacheWidth: 600,
+                      filterQuality: FilterQuality.low,
+                      gaplessPlayback: true,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: Colors.grey[300],
+                          child: const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.broken_image,
+                                size: 48,
+                                color: Colors.grey,
+                              ),
+                              SizedBox(height: 8),
+                              Text(
+                                '[图片格式错误]',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
+  }
+
+  Size _resolveLayoutSize(BoxConstraints constraints) {
+    final maxWidth =
+        constraints.hasBoundedWidth ? constraints.maxWidth : _maxImageSize;
+    final base = math.min(maxWidth, _maxImageSize);
+    final ratio = _resolveImageAspectRatio();
+    return _scaleByAspectRatio(
+      ratio,
+      baseWidth: base,
+      minSize: _minImageSize,
+      maxSize: _maxImageSize,
+    );
+  }
+
+  double _resolveImageAspectRatio() {
+    final raw = _parseImageSizeFromContent();
+    if (raw == null) return 1.0;
+    if (raw.height <= 0) return 1.0;
+    return raw.width / raw.height;
+  }
+
+  Size? _parseImageSizeFromContent() {
+    final primary = widget.message.messageContent;
+    final secondary = widget.message.compressContent;
+    final width = _extractIntAttribute(primary, const [
+      'cdnthumbwidth',
+      'cdnmidimgwidth',
+      'width',
+    ]) ?? _extractIntAttribute(secondary, const [
+      'cdnthumbwidth',
+      'cdnmidimgwidth',
+      'width',
+    ]);
+    final height = _extractIntAttribute(primary, const [
+      'cdnthumbheight',
+      'cdnmidimgheight',
+      'height',
+    ]) ?? _extractIntAttribute(secondary, const [
+      'cdnthumbheight',
+      'cdnmidimgheight',
+      'height',
+    ]);
+    if (width == null || height == null) return null;
+    if (width <= 0 || height <= 0) return null;
+    return Size(width.toDouble(), height.toDouble());
+  }
+
+  int? _extractIntAttribute(String content, List<String> keys) {
+    for (final key in keys) {
+      final pattern = RegExp(
+        "$key\\s*=\\s*['\"](\\d+)['\"]",
+        caseSensitive: false,
+      );
+      final match = pattern.firstMatch(content);
+      if (match == null) continue;
+      final value = int.tryParse(match.group(1)!);
+      if (value != null && value > 0) return value;
+    }
+    return null;
+  }
+
+  Future<String?> _resolvePreferredImagePath(String hardlinkPath) async {
+    final isThumb = _isThumbFileName(hardlinkPath);
+    if (!isThumb && await _isImageUsable(hardlinkPath)) {
+      return hardlinkPath;
+    }
+
+    String? decodedPath =
+        await _findDecryptedImageByName(_datName, refresh: false);
+    if (decodedPath == null && widget.message.imageMd5 != null) {
+      decodedPath = await _findDecryptedImageByName(
+        widget.message.imageMd5,
+        refresh: false,
+      );
+    }
+    if (decodedPath != null && await _isImageUsable(decodedPath)) {
+      return decodedPath;
+    }
+
+    if (isThumb && await _isImageUsable(hardlinkPath)) {
+      return hardlinkPath;
+    }
+    return null;
+  }
+
+  bool _isThumbFileName(String path) {
+    final base = p.basenameWithoutExtension(path).toLowerCase();
+    return base.endsWith('.t') || base.endsWith('_t');
+  }
+
+  Size _scaleByAspectRatio(
+    double ratio, {
+    required double baseWidth,
+    required double minSize,
+    required double maxSize,
+  }) {
+    final safeRatio = ratio <= 0 ? 1.0 : ratio;
+    var width = baseWidth.clamp(minSize, maxSize);
+    var height = width / safeRatio;
+    if (height > maxSize) {
+      height = maxSize;
+      width = height * safeRatio;
+    }
+    if (width < minSize) {
+      width = minSize;
+      height = width / safeRatio;
+      if (height > maxSize) {
+        height = maxSize;
+        width = height * safeRatio;
+      }
+    }
+    return Size(width, height);
   }
 
   Widget _buildErrorPlaceholder(BuildContext context) {
@@ -394,6 +538,9 @@ class _ImageMessageWidgetState extends State<ImageMessageWidget> {
     if (!_indexed) {
       await _ensureDecryptedIndex();
     }
+    if (!refresh && _decryptedVariantIndex.isEmpty && _shouldRefreshIndex()) {
+      await _rebuildDecryptedIndex();
+    }
     final resolved = await _resolveFromIndex(key);
     if (resolved != null || !refresh) return resolved;
 
@@ -413,13 +560,17 @@ class _ImageMessageWidgetState extends State<ImageMessageWidget> {
   }
 
   Future<void> _ensureDecryptedIndex() async {
+    if (_indexing != null) {
+      await _indexing;
+      return;
+    }
     if (_indexed) return;
-    _indexing ??= _buildDecryptedIndex();
+    _indexing = _buildDecryptedIndex();
     await _indexing;
   }
 
   Future<void> _buildDecryptedIndex() async {
-    _indexed = true;
+    _indexed = false;
     _decryptedVariantIndex.clear();
     _invalidImagePaths.clear();
     try {
@@ -436,6 +587,9 @@ class _ImageMessageWidgetState extends State<ImageMessageWidget> {
       } catch (_) {
         paths = await _scanDecryptedImages(imagesRoot.path);
       }
+      if (paths.isEmpty && !kIsWeb) {
+        paths = await _scanDecryptedImages(imagesRoot.path);
+      }
 
       for (final path in paths) {
         final base = p.basenameWithoutExtension(path).toLowerCase();
@@ -447,7 +601,8 @@ class _ImageMessageWidgetState extends State<ImageMessageWidget> {
       // 忽略索引失败，但允许后续重建
       _indexed = false;
     } finally {
-      if (_indexed) {
+      if (_decryptedVariantIndex.isNotEmpty) {
+        _indexed = true;
         _lastIndexBuildAt = DateTime.now();
       }
       _indexing = null;

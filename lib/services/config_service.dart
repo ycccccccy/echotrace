@@ -14,6 +14,7 @@ class ConfigService {
   static const String _keyDebugMode = 'debug_mode'; // 调试模式开关
   static const String _keyLaunchPending =
       'last_launch_pending'; // 上次是否未正常完成启动
+  static const String _keyPrivacyAccepted = 'privacy_accepted'; // 隐私协议是否已同意
 
   /// 保存解密密钥
   Future<void> saveDecryptKey(String key) async {
@@ -129,6 +130,18 @@ class ConfigService {
     await prefs.setBool(_keyLaunchPending, true);
   }
 
+  /// 保存隐私协议同意状态
+  Future<void> setPrivacyAccepted(bool accepted) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyPrivacyAccepted, accepted);
+  }
+
+  /// 获取隐私协议同意状态
+  Future<bool> isPrivacyAccepted() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyPrivacyAccepted) ?? false;
+  }
+
   /// 判断上次启动是否异常中断
   Future<bool> wasLastLaunchInterrupted() async {
     final prefs = await SharedPreferences.getInstance();
@@ -147,5 +160,6 @@ class ConfigService {
     await prefs.remove(_keyManualWxid);
     await prefs.remove(_keyDebugMode);
     await prefs.remove(_keyLaunchPending);
+    await prefs.remove(_keyPrivacyAccepted);
   }
 }
