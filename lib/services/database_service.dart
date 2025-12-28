@@ -2551,7 +2551,7 @@ class DatabaseService {
             final hasMd5 = md5 != null && md5.isNotEmpty;
             final hasUrl = url.isNotEmpty;
             if (!hasMd5 && !hasUrl) continue;
-            final key = hasMd5 ? md5! : url;
+            final key = hasMd5 ? md5 : url;
 
             final isSend = message.isSend;
             if (isSend == 1) {
