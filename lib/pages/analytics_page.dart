@@ -1313,6 +1313,11 @@ class _DualReportSubPageState extends State<_DualReportSubPage> {
     _cancelRequested = false;
     await logger.debug(
       'DualReportPage',
+      '========== DUAL REPORT START ==========',
+    );
+    final generateStart = DateTime.now();
+    await logger.debug(
+      'DualReportPage',
       'generate start: friend=${ranking.username}',
     );
     setState(() {
@@ -1339,6 +1344,7 @@ class _DualReportSubPageState extends State<_DualReportSubPage> {
       if (cached != null) {
         await _updateProgress('检查缓存', '已完成', 100);
         reportData = cached;
+        await logger.info('DualReportPage', 'cache hit: use cached report');
       } else {
         await _updateProgress('检查缓存', '已完成', 12);
         reportData = await _generateReportInIsolate(ranking);
@@ -1349,6 +1355,7 @@ class _DualReportSubPageState extends State<_DualReportSubPage> {
           null,
           cacheData,
         );
+        await logger.debug('DualReportPage', 'cache saved');
       }
 
       final yearlyStats =
@@ -1402,6 +1409,14 @@ class _DualReportSubPageState extends State<_DualReportSubPage> {
 
       await _cacheTopEmojiAssets(reportData);
       await _buildReportHtml(reportData);
+      await logger.info(
+        'DualReportPage',
+        'DUAL REPORT done, elapsed: ${DateTime.now().difference(generateStart).inSeconds}s',
+      );
+      await logger.debug(
+        'DualReportPage',
+        '========== DUAL REPORT DONE ==========',
+      );
       await _startReportServer();
       if (!_didAutoOpen) {
         _didAutoOpen = true;
@@ -1410,6 +1425,7 @@ class _DualReportSubPageState extends State<_DualReportSubPage> {
     } catch (e) {
       if (_cancelRequested) return;
       if (!mounted) return;
+      await logger.error('DualReportPage', 'DUAL REPORT failed: $e');
       setState(() => _errorMessage = '生成双人报告失败: $e');
     } finally {
       if (mounted) {

@@ -79,6 +79,10 @@ class _DualReportPageState extends State<DualReportPage> {
     required String? manualWxid,
   }) async {
     _disposeReportIsolate();
+    await logger.debug(
+      'DualReportPage',
+      'start isolate: friend=$friendUsername dbPath=$dbPath',
+    );
     final receivePort = ReceivePort();
     final exitPort = ReceivePort();
     final errorPort = ReceivePort();
@@ -150,7 +154,11 @@ class _DualReportPageState extends State<DualReportPage> {
         onError: errorPort.sendPort,
         debugName: 'dual-report',
       );
-    } catch (e) {
+      await logger.debug(
+        'DualReportPage',
+        'isolate spawned: friend=$friendUsername',
+      );
+    } catch (e, stackTrace) {
       if (!completer.isCompleted) {
         completer.completeError(e);
       }
@@ -208,9 +216,23 @@ class _DualReportPageState extends State<DualReportPage> {
       _currentTaskStatus = status;
       _totalProgress = progress;
     });
+    await logger.debug(
+      'DualReportPage',
+      'progress: $taskName - $status ($progress%)',
+    );
   }
 
   Future<void> _generateReport({required String friendUsername}) async {
+    await logger.debug(
+      'DualReportPage',
+      '========== DUAL REPORT START ==========',
+    );
+    await logger.debug(
+      'DualReportPage',
+      'generate start: friend=$friendUsername',
+    );
+    final generateStart = DateTime.now();
+
     try {
       if (mounted) {
         setState(() {
@@ -234,7 +256,12 @@ class _DualReportPageState extends State<DualReportPage> {
         friendUsername,
         null,
       );
+      await logger.debug(
+        'DualReportPage',
+        'cache check: friend=$friendUsername hit=${cachedData != null}',
+      );
       if (cachedData != null) {
+        await logger.info('DualReportPage', 'cache hit: use cached report');
         await _updateProgress('检查缓存', '已完成', 100);
         // 使用缓存数据
         if (!mounted) return;
@@ -269,7 +296,8 @@ class _DualReportPageState extends State<DualReportPage> {
           (yearlyStats['myTopEmojiMd5'] as String?)?.isNotEmpty == true ||
           (yearlyStats['friendTopEmojiMd5'] as String?)?.isNotEmpty == true;
       if (!hasTopEmoji) {
-        try {
+
+    try {
           final actualYear =
               (reportData['year'] as int?) ?? DateTime.now().year;
           await logger.debug(
@@ -310,19 +338,34 @@ class _DualReportPageState extends State<DualReportPage> {
       final cacheData = _cloneForCache(reportData);
       _stripEmojiDataUrls(cacheData);
       await DualReportCacheService.saveReport(friendUsername, null, cacheData);
+      await logger.debug('DualReportPage', 'cache saved');
       await _updateProgress('保存报告', '已完成', 100);
 
       if (!mounted) return;
 
       // 跳转到报告展示页面
+      await logger.info(
+        'DualReportPage',
+        'DUAL REPORT done, elapsed: ${DateTime.now().difference(generateStart).inSeconds}s',
+      );
+      await logger.debug(
+        'DualReportPage',
+        '========== DUAL REPORT DONE ==========',
+      );
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (context) => DualReportDisplayPage(reportData: reportData),
         ),
       );
-    } catch (e) {
+    } catch (e, stackTrace) {
       if (!mounted) return;
+      await logger.error(
+        'DualReportPage',
+        'DUAL REPORT failed: $e',
+        e,
+        stackTrace,
+      );
 
       // 显示错误信息
       ScaffoldMessenger.of(
@@ -340,6 +383,7 @@ class _DualReportPageState extends State<DualReportPage> {
 
   
   Map<String, dynamic> _cloneForCache(Map<String, dynamic> data) {
+
     try {
       return jsonDecode(jsonEncode(data)) as Map<String, dynamic>;
     } catch (_) {
@@ -357,6 +401,7 @@ class _DualReportPageState extends State<DualReportPage> {
   }
 
   Future<void> _cacheTopEmojiAssets(Map<String, dynamic> reportData) async {
+
     try {
       final yearlyStats =
           (reportData['yearlyStats'] as Map?)?.cast<String, dynamic>() ??
@@ -469,6 +514,7 @@ class _DualReportPageState extends State<DualReportPage> {
     String url,
     String? md5,
   ) async {
+
     try {
       final response = await http
           .get(Uri.parse(url))
