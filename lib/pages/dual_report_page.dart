@@ -159,6 +159,12 @@ class _DualReportPageState extends State<DualReportPage> {
         'isolate spawned: friend=$friendUsername',
       );
     } catch (e, stackTrace) {
+      await logger.error(
+        'DualReportPage',
+        'spawn isolate failed: $e',
+        e,
+        stackTrace,
+      );
       if (!completer.isCompleted) {
         completer.completeError(e);
       }
@@ -296,8 +302,7 @@ class _DualReportPageState extends State<DualReportPage> {
           (yearlyStats['myTopEmojiMd5'] as String?)?.isNotEmpty == true ||
           (yearlyStats['friendTopEmojiMd5'] as String?)?.isNotEmpty == true;
       if (!hasTopEmoji) {
-
-    try {
+        try {
           final actualYear =
               (reportData['year'] as int?) ?? DateTime.now().year;
           await logger.debug(
