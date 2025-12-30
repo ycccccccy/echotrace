@@ -1142,11 +1142,17 @@ class _AnnualReportSubPageState extends State<_AnnualReportSubPage> {
   List<int> _availableYears = const [];
   int? _selectedYear;
   bool _yearConfirmed = false;
+  bool _autoPrompted = false;
 
   @override
   void initState() {
     super.initState();
     _loadAvailableYears();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _autoPrompted) return;
+      _autoPrompted = true;
+      await _ensureYearSelection();
+    });
   }
 
   Future<void> _loadAvailableYears() async {
@@ -1337,6 +1343,26 @@ class _AnnualReportSubPageState extends State<_AnnualReportSubPage> {
   @override
   Widget build(BuildContext context) {
     final reportKey = ValueKey<String>(_selectedYear?.toString() ?? 'all');
+
+    if (!_yearConfirmed) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('请选择时间范围'),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: _ensureYearSelection,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF07C160),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('选择时间'),
+            ),
+          ],
+        ),
+      );
+    }
 
     return AnnualReportDisplayPage(
       key: reportKey,
