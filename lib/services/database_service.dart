@@ -2021,6 +2021,59 @@ class DatabaseService {
     }
   }
 
+  /// 快速获取会话按月份分组的消息统计
+  Future<Map<int, int>> getSessionMessageCountsByMonth(
+    String sessionId, {
+    int? filterYear,
+  }) async {
+    if (_sessionDb == null) {
+      throw Exception('数据库未连接');
+    }
+
+    try {
+      final resultMap = <int, int>{};
+
+      String? yearFilter;
+      if (filterYear != null) {
+        final startTimestamp =
+            DateTime(filterYear, 1, 1).millisecondsSinceEpoch ~/ 1000;
+        final endTimestamp =
+            DateTime(filterYear + 1, 1, 1).millisecondsSinceEpoch ~/ 1000;
+        yearFilter =
+            ' AND create_time >= $startTimestamp AND create_time < $endTimestamp';
+      }
+
+      final dbInfos = await _collectTableInfosAcrossDatabases(sessionId);
+
+      for (final dbInfo in dbInfos) {
+        try {
+          final result = await dbInfo.database.rawQuery(
+            '''
+            SELECT 
+              strftime('%m', create_time, 'unixepoch', 'localtime') as month,
+              COUNT(*) as count
+            FROM ${dbInfo.tableName}
+            WHERE 1=1 ${yearFilter ?? ''}
+            GROUP BY month
+          ''',
+          );
+
+          for (final row in result) {
+            final monthStr = row['month'] as String?;
+            final month = monthStr != null ? int.tryParse(monthStr) : null;
+            if (month == null) continue;
+            final count = (row['count'] as int?) ?? 0;
+            resultMap[month] = (resultMap[month] ?? 0) + count;
+          }
+        } catch (e) {}
+      }
+
+      return resultMap;
+    } catch (e) {
+      return {};
+    }
+  }
+
   /// 快速获取会话消息的日期列表（用于连续打卡等分析，不加载消息内容）
   Future<List<DateTime>> getSessionMessageDates(
     String sessionId, {

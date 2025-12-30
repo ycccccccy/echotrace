@@ -772,6 +772,99 @@ class AdvancedAnalyticsService {
     }).toList();
   }
 
+  /// 月度好友（每个月聊天最多的好友）
+  Future<Map<String, dynamic>> getMonthlyTopFriends() async {
+    final sessions = await _databaseService.getSessions();
+    final myWxid = _databaseService.currentAccountWxid;
+    final normalizedMyWxid = myWxid?.toLowerCase();
+    final privateSessions = sessions
+        .where((s) => !s.isGroup && !_isSystemAccount(s.username))
+        .where((s) {
+          final username = s.username.toLowerCase();
+          if (username == 'filehelper') return false;
+          if (normalizedMyWxid != null &&
+              normalizedMyWxid.isNotEmpty &&
+              username == normalizedMyWxid) {
+            return false;
+          }
+          return true;
+        })
+        .toList();
+
+    final displayNames = await _databaseService.getDisplayNames(
+      privateSessions.map((s) => s.username).toList(),
+    );
+
+    final topByMonth = List<Map<String, dynamic>>.generate(12, (i) {
+      return <String, dynamic>{
+        'month': i + 1,
+        'username': null,
+        'displayName': null,
+        'count': 0,
+      };
+    });
+
+    for (final session in privateSessions) {
+      try {
+        final counts = await _databaseService.getSessionMessageCountsByMonth(
+          session.username,
+          filterYear: _filterYear,
+        );
+
+        counts.forEach((month, count) {
+          if (month < 1 || month > 12) return;
+          final current = topByMonth[month - 1]['count'] as int;
+          if (count > current) {
+            topByMonth[month - 1] = {
+              'month': month,
+              'username': session.username,
+              'displayName':
+                  displayNames[session.username] ??
+                  session.displayName ??
+                  session.username,
+              'count': count,
+            };
+          }
+        });
+      } catch (e) {
+        // 跳过错误
+      }
+    }
+
+    final avatarTargets = <String>[];
+    for (final item in topByMonth) {
+      final username = item['username'] as String?;
+      if (username != null && username.isNotEmpty) {
+        avatarTargets.add(username);
+      }
+    }
+    if (myWxid != null && myWxid.isNotEmpty) {
+      avatarTargets.add(myWxid);
+    }
+
+    final avatarUrls = avatarTargets.isNotEmpty
+        ? await _databaseService.getAvatarUrls(avatarTargets)
+        : <String, String>{};
+    final selfAvatarUrl =
+        myWxid != null ? (avatarUrls[myWxid] ?? '') : '';
+
+    final monthlyTopFriends = topByMonth.map((item) {
+      final username = item['username'] as String?;
+      return {
+        'month': item['month'],
+        'username': username,
+        'displayName': item['displayName'] ?? '暂无',
+        'count': item['count'],
+        'avatarUrl': username != null ? (avatarUrls[username] ?? '') : '',
+      };
+    }).toList();
+
+    return {
+      'monthlyTopFriends': monthlyTopFriends,
+      'selfAvatarUrl': selfAvatarUrl,
+    };
+  }
+
   /// 双向奔赴好友（互动均衡度排名）
   Future<List<FriendshipRanking>> getMutualFriendsRanking(int limit) async {
     final sessions = await _databaseService.getSessions();
