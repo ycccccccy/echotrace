@@ -6144,7 +6144,6 @@ class DatabaseService {
       await logger.error('DatabaseService', '获取词云消息失败', e);
       onLog?.call('词云分析：获取消息失败: $e', level: 'error');
       return [];
-      }
     }
 
     /// 分析响应速度（谁回复我最快）
