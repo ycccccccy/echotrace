@@ -5948,10 +5948,10 @@ class DatabaseService {
   Future<List<String>> getTextMessagesForWordCloud({
     int? year,
     Set<String>? excludedUsernames,
-    int maxMessages = 50000,
     bool onlyMySent = true,
     String? myWxid,
     Function(String message, {String level})? onLog,
+    void Function(int current, int total, String stage)? onProgress,
   }) async {
     if (!isConnected) {
       onLog?.call('词云分析：数据库未连接', level: 'error');
@@ -5997,14 +5997,32 @@ class DatabaseService {
         'WCDB_CT_message_content',
       ];
 
+      var totalTablesToScan = 0;
+      final dbTables = <String, List<String>>{};
       for (final cachedDb in cachedDbs) {
-        // 如果指定了年份，必须遍历所有数据库，不受 maxMessages 限制
-        // 如果 maxMessages 很大（>= 100000），也继续遍历所有数据库
-        if (year != null || maxMessages >= 100000) {
-          // 继续遍历，不退出
-        } else if (messages.length >= maxMessages) {
-          break;
+        try {
+          final tables = await cachedDb.database.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'Msg_%'",
+          );
+          final tableNames = tables
+              .map((row) => row['name'] as String)
+              .where((name) => !excludedTables.contains(name))
+              .toList();
+          dbTables[cachedDb.key] = tableNames;
+          totalTablesToScan += tableNames.length;
+        } catch (e) {
+          onLog?.call('词云分析：读取数据库 ${cachedDb.key} 表结构失败: $e', level: 'warning');
+          dbTables[cachedDb.key] = [];
         }
+      }
+
+      var scannedTables = 0;
+      if (totalTablesToScan > 0) {
+        onProgress?.call(0, totalTablesToScan, '正在扫描消息表...');
+      }
+
+      for (final cachedDb in cachedDbs) {
+        final tables = dbTables[cachedDb.key] ?? const <String>[];
 
         try {
           // 如果只获取自己发送的消息，需要先获取当前用户的 rowid
@@ -6024,23 +6042,18 @@ class DatabaseService {
             }
           }
           
-          final tables = await cachedDb.database.rawQuery(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'Msg_%'",
-          );
           onLog?.call('词云分析：数据库 ${cachedDb.key} 有 ${tables.length} 个消息表', level: 'debug');
 
-          for (final tableRow in tables) {
-            // 如果指定了年份，必须遍历所有表，不受 maxMessages 限制
-            // 如果 maxMessages 很大（>= 100000），也继续遍历所有表
-            if (year != null || maxMessages >= 100000) {
-              // 继续遍历，不退出
-            } else if (messages.length >= maxMessages) {
-              break;
-            }
-            
-            final tableName = tableRow['name'] as String;
+          for (final tableName in tables) {
             totalTables++;
-            if (excludedTables.contains(tableName)) continue;
+            scannedTables++;
+            if (totalTablesToScan > 0) {
+              onProgress?.call(
+                scannedTables,
+                totalTablesToScan,
+                '正在扫描消息表...',
+              );
+            }
 
             try {
               // 检测表结构，找到可用的内容字段
@@ -6072,43 +6085,22 @@ class DatabaseService {
               }
 
               // 获取文本消息内容（local_type 1 和 244813135921 都是文本消息）
-              // 如果指定了年份或 remaining 很大，则不使用 LIMIT，获取所有符合条件的消息
-              final remaining = maxMessages - messages.length;
               String query;
               List<dynamic> queryArgs;
               
-              // 如果指定了年份，必须获取该年份的所有消息，不使用 LIMIT
-              // 如果 remaining 很大（>= 100000），也不使用 LIMIT
-              if (year != null || remaining >= 100000) {
-                // 不使用 LIMIT，获取所有符合条件的消息
-                query = '''
-                SELECT $contentColumn as content
-                FROM $tableName
-                WHERE local_type IN (1, 244813135921)
-                  AND $contentColumn IS NOT NULL 
-                  AND $contentColumn != ''
-                  AND LENGTH($contentColumn) > 1
-                  AND $contentColumn NOT LIKE '[%'
-                  $yearFilter
-                  $senderFilter
-                ''';
-                queryArgs = [];
-                onLog?.call('词云分析：表 $tableName 获取所有符合条件的消息（年份: ${year ?? "全部"}）', level: 'debug');
-              } else {
-                query = '''
-                SELECT $contentColumn as content
-                FROM $tableName
-                WHERE local_type IN (1, 244813135921)
-                  AND $contentColumn IS NOT NULL 
-                  AND $contentColumn != ''
-                  AND LENGTH($contentColumn) > 1
-                  AND $contentColumn NOT LIKE '[%'
-                  $yearFilter
-                  $senderFilter
-                LIMIT ?
-                ''';
-                queryArgs = [remaining];
-              }
+              query = '''
+              SELECT $contentColumn as content
+              FROM $tableName
+              WHERE local_type IN (1, 244813135921)
+                AND $contentColumn IS NOT NULL 
+                AND $contentColumn != ''
+                AND LENGTH($contentColumn) > 1
+                AND $contentColumn NOT LIKE '[%'
+                $yearFilter
+                $senderFilter
+              ''';
+              queryArgs = [];
+              onLog?.call('词云分析：表 $tableName 获取所有符合条件的消息（年份: ${year ?? "全部"}）', level: 'debug');
               
               final results = await cachedDb.database.rawQuery(query, queryArgs);
 

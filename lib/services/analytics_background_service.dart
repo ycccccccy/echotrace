@@ -1023,14 +1023,36 @@ class AnalyticsBackgroundService {
               // 获取文本消息（只获取当前用户发送的消息，不限制数量）
               // 如果指定了年份，必须获取该年份的所有消息
               sendLog('开始查询${yearText}的所有聊天记录...', level: 'info');
+              var lastProgress = 30;
               final messages = await dbService.getTextMessagesForWordCloud(
                 year: task.filterYear,
                 excludedUsernames: task.excludedUsernames.toSet(),
-                maxMessages: 1000000, // 大幅增加限制，确保获取所有消息
                 onlyMySent: true,
                 myWxid: task.myWxid,
                 onLog: (message, {String level = 'info'}) {
                   sendLog(message, level: level);
+                },
+                onProgress: (current, total, stage) {
+                  if (total <= 0) return;
+                  final progress = 30 + ((current / total) * 15).floor();
+                  if (progress == lastProgress) return;
+                  lastProgress = progress;
+                  task.sendPort.send(
+                    _AnalyticsMessage(
+                      type: 'progress',
+                      stage: stage,
+                      current: progress,
+                      total: 100,
+                      elapsedSeconds: DateTime.now()
+                          .difference(startTime)
+                          .inSeconds,
+                      estimatedRemainingSeconds: _estimateRemainingTime(
+                        progress,
+                        100,
+                        startTime,
+                      ),
+                    ),
+                  );
                 },
               );
               sendLog('${yearText}共获取到 ${messages.length} 条我发送的文本消息', level: 'info');
