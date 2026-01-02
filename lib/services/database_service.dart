@@ -6144,10 +6144,10 @@ class DatabaseService {
       await logger.error('DatabaseService', '获取词云消息失败', e);
       onLog?.call('词云分析：获取消息失败: $e', level: 'error');
       return [];
+      }
     }
-  }
 
-  /// 分析响应速度（谁回复我最快）
+    /// 分析响应速度（谁回复我最快）
   Future<List<Map<String, dynamic>>> analyzeResponseSpeed({
     required bool isMyResponse, // true: 我回复对方, false: 对方回复我
     int? year,
@@ -6398,6 +6398,114 @@ class DatabaseService {
     } catch (e, stackTrace) {
       await log('分析响应速度失败: $e\n堆栈: $stackTrace', level: 'error');
       rethrow;
+    }
+  }
+
+  /// Get session text messages for word cloud analysis.
+  /// Uses raw content columns to avoid loading full Message objects.
+  Future<List<String>> getSessionTextMessagesForWordCloud({
+    required String sessionId,
+    int? year,
+    Function(String message, {String level})? onLog,
+    void Function(int current, int total, String stage)? onProgress,
+  }) async {
+    if (_sessionDb == null) {
+      onLog?.call('word cloud: database not connected', level: 'error');
+      throw Exception('database not connected');
+    }
+
+    final messages = <String>[];
+    try {
+      final dbInfos = await _collectTableInfosAcrossDatabases(sessionId);
+      if (dbInfos.isEmpty) {
+        onLog?.call(
+          'word cloud: no message tables found for session',
+          level: 'warning',
+        );
+        return [];
+      }
+
+      final startTime = year == null
+          ? null
+          : DateTime(year, 1, 1).millisecondsSinceEpoch ~/ 1000;
+      final endTime = year == null
+          ? null
+          : DateTime(year + 1, 1, 1).millisecondsSinceEpoch ~/ 1000;
+      final yearFilter = year == null
+          ? ''
+          : ' AND create_time >= $startTime AND create_time < $endTime';
+
+      const contentCandidates = [
+        'display_content',
+        'message_content',
+        'content',
+        'WCDB_CT_message_content',
+      ];
+
+      var scanned = 0;
+      final total = dbInfos.length;
+      if (total > 0) {
+        onProgress?.call(0, total, 'scanning tables...');
+      }
+
+      for (final info in dbInfos) {
+        scanned++;
+        if (total > 0) {
+          onProgress?.call(scanned, total, 'scanning tables...');
+        }
+
+        try {
+          final pragmaRows = await info.database.rawQuery(
+            "PRAGMA table_info('${info.tableName}')",
+          );
+          final cols = pragmaRows
+              .map((row) => (row['name'] as String?)?.toLowerCase() ?? '')
+              .toSet();
+          String? contentColumn;
+          for (final candidate in contentCandidates) {
+            if (cols.contains(candidate.toLowerCase())) {
+              contentColumn = candidate;
+              break;
+            }
+          }
+          if (contentColumn == null) {
+            onLog?.call(
+              'word cloud: table ${info.tableName} missing content column',
+              level: 'debug',
+            );
+            continue;
+          }
+
+          final query = '''
+            SELECT $contentColumn as content
+            FROM ${info.tableName}
+            WHERE local_type IN (1, 244813135921)
+              AND $contentColumn IS NOT NULL
+              AND $contentColumn != ''
+              AND LENGTH($contentColumn) > 1
+              AND $contentColumn NOT LIKE '[%'
+              $yearFilter
+          ''';
+
+          final results = await info.database.rawQuery(query);
+          for (final row in results) {
+            final content = row['content'] as String?;
+            if (content != null && content.isNotEmpty) {
+              messages.add(content);
+            }
+          }
+        } catch (e) {
+          onLog?.call(
+            'word cloud: query table ${info.tableName} failed: $e',
+            level: 'warning',
+          );
+        }
+      }
+
+      return messages;
+    } catch (e) {
+      onLog?.call('word cloud: fetch failed: $e', level: 'error');
+      return [];
     }
   }
 

@@ -324,34 +324,15 @@ class DualReportService {
     int? year,
   ) async {
     try {
-      // 定义时间范围
-      int startTimestamp = 0;
-      int endTimestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-
-      if (year != null) {
-        final startOfYear = DateTime(year, 1, 1);
-        final endOfYear = DateTime(year, 12, 31, 23, 59, 59);
-        startTimestamp = startOfYear.millisecondsSinceEpoch ~/ 1000;
-        endTimestamp = endOfYear.millisecondsSinceEpoch ~/ 1000;
-      }
-
-      // 获取消息
-      final messages = await _databaseService.getMessagesByDate(
-        username,
-        startTimestamp,
-        endTimestamp,
+      final textContents =
+          await _databaseService.getSessionTextMessagesForWordCloud(
+        sessionId: username,
+        year: year,
       );
 
-      if (messages.isEmpty) {
+      if (textContents.isEmpty) {
         return {'words': [], 'totalWords': 0, 'totalMessages': 0};
       }
-
-      // 提取文本消息内容
-      final textContents = messages
-          .where((msg) => msg.isTextMessage || msg.localType == 244813135921)
-          .where((msg) => msg.displayContent.isNotEmpty)
-          .map((msg) => msg.displayContent)
-          .toList();
 
       // 使用统一的词云服务分析
       final result = await WordCloudService.instance.analyze(

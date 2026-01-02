@@ -6,6 +6,7 @@ import '../services/database_service.dart';
 import '../services/advanced_analytics_service.dart';
 import '../services/response_time_analyzer.dart';
 import '../services/former_friend_analyzer.dart';
+import '../services/word_cloud_service.dart';
 import '../services/logger_service.dart';
 import '../models/advanced_analytics_data.dart';
 
@@ -527,6 +528,79 @@ class AnalyticsBackgroundService {
               final data = await analyticsService.analyzeActivityPattern();
               sendLog('作息规律分析完成，最大值: ${data.maxCount}', level: 'debug');
               result = data.toJson();
+              break;
+
+            case 'wordcloud':
+              sendLog('start word cloud analysis', level: 'debug');
+              task.sendPort.send(
+                _AnalyticsMessage(
+                  type: 'progress',
+                  stage: 'loading messages for word cloud...',
+                  current: 10,
+                  total: 100,
+                  elapsedSeconds: DateTime.now()
+                      .difference(startTime)
+                      .inSeconds,
+                  estimatedRemainingSeconds: _estimateRemainingTime(
+                    10,
+                    100,
+                    startTime,
+                  ),
+                ),
+              );
+              final texts = await dbService.getTextMessagesForWordCloud(
+                year: task.filterYear,
+                excludedUsernames: task.excludedUsernames.toSet(),
+                onlyMySent: true,
+                myWxid: dbService.currentAccountWxid,
+                onLog: (message, {String level = 'info'}) {
+                  sendLog(message, level: level);
+                },
+                onProgress: (current, total, stage) {
+                  task.sendPort.send(
+                    _AnalyticsMessage(
+                      type: 'progress',
+                      stage: stage,
+                      current: current,
+                      total: total,
+                      elapsedSeconds: DateTime.now()
+                          .difference(startTime)
+                          .inSeconds,
+                      estimatedRemainingSeconds: _estimateRemainingTime(
+                        current,
+                        total,
+                        startTime,
+                      ),
+                    ),
+                  );
+                },
+              );
+
+              task.sendPort.send(
+                _AnalyticsMessage(
+                  type: 'progress',
+                  stage: 'building word cloud...',
+                  current: 80,
+                  total: 100,
+                  elapsedSeconds: DateTime.now()
+                      .difference(startTime)
+                      .inSeconds,
+                  estimatedRemainingSeconds: _estimateRemainingTime(
+                    80,
+                    100,
+                    startTime,
+                  ),
+                ),
+              );
+
+              final wordCloudResult = await WordCloudService.instance.analyze(
+                texts: WordCloudService.filterTextMessages(texts),
+                mode: WordCloudMode.sentence,
+                topN: 50,
+                minCount: 2,
+              );
+              result = wordCloudResult.toJson();
+              sendLog('word cloud analysis done', level: 'debug');
               break;
 
             case 'midnight':
@@ -1558,6 +1632,33 @@ class AnalyticsBackgroundService {
       );
     }
 
+    Map<String, dynamic> wordCloudData = {
+      'words': [],
+      'totalWords': 0,
+      'totalMessages': 0,
+    };
+    try {
+      await logger.info('AnnualReport', 'start word cloud analysis');
+      final result = await _runAnalysisInIsolate(
+        analysisType: 'wordcloud',
+        filterYear: filterYear,
+        progressCallback: (
+          String stage,
+          int current,
+          int total, {
+          String? detail,
+          int? elapsedSeconds,
+          int? estimatedRemainingSeconds,
+        }) {},
+      );
+      if (result is Map) {
+        wordCloudData = result.cast<String, dynamic>();
+      }
+      await logger.info('AnnualReport', 'word cloud analysis done');
+    } catch (e) {
+      await logger.warning('AnnualReport', 'word cloud analysis failed: $e');
+    }
+
     final result = {
       'coreFriends': (coreFriendsData['top3'] as List<FriendshipRanking>)
           .map((e) => e.toJson())
@@ -1578,6 +1679,7 @@ class AnalyticsBackgroundService {
       'myFastestReplies': myFastestReplies,
       'formerFriends': formerFriends,
       'formerFriendsStats': formerFriendsStats,
+      'wordCloud': wordCloudData,
     };
 
     await logger.debug(
