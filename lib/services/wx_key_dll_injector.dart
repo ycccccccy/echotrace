@@ -911,7 +911,10 @@ class DllInjector {
         );
         free(titleBuffer);
 
-        if (title.contains('微信') || title.contains('Weixin')) {
+        final titleLower = title.toLowerCase();
+        if (title.contains('微信') ||
+            titleLower.contains('wechat') ||
+            titleLower.contains('weixin')) {
           final pidsPtr = Pointer<Pointer<Int32>>.fromAddress(lParam);
           final pids = pidsPtr.value;
           for (int i = 0; i < 100; i++) {
