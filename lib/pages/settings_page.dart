@@ -354,7 +354,10 @@ class _SettingsPageState extends State<SettingsPage>
         }
       }
 
-      _showMessage('未能自动检测到微信数据库目录，请手动选择或输入wxid', false);
+      _showMessage(
+        '未能自动检测到微信数据库目录，请手动选择至与微信-设置-存储位置的路径保持一致',
+        false,
+      );
     } catch (e) {
       _showMessage('自动检测失败: $e', false);
     }

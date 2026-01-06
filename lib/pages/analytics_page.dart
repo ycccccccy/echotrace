@@ -57,6 +57,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
   bool _showAllMessageTypes = false;
   bool _analysisBlockedByRealtime = false;
   bool _realtimeDialogShown = false;
+  Future<List<_ExcludeFriendEntry>>? _excludeFriendsFuture;
 
   bool get _isSubPage => _showAnnualReportSubPage || _showDualReportSubPage;
 
@@ -242,6 +243,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
               _loadingStatus = '完成（使用缓存数据）';
               _isLoading = false;
             });
+            _preloadExcludeFriends();
             await logger.debug(
               'AnalyticsPage',
               '使用缓存数据完成，总消息数: ${_overallStats?.totalMessages}',
@@ -260,6 +262,7 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
           _loadingStatus = '完成（从缓存加载）';
           _isLoading = false;
         });
+        _preloadExcludeFriends();
         await logger.debug(
           'AnalyticsPage',
           '缓存加载完成，总消息数: ${_overallStats?.totalMessages}, 联系人数: ${_allContactRankings?.length}',
@@ -383,6 +386,66 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
     });
 
     await logger.debug('AnalyticsPage', '========== 数据分析执行完成 ==========');
+    _preloadExcludeFriends(force: true);
+  }
+
+  Future<List<_ExcludeFriendEntry>> _preloadExcludeFriends({
+    bool force = false,
+  }) {
+    if (!force && _excludeFriendsFuture != null) {
+      return _excludeFriendsFuture!;
+    }
+    final future = _loadExcludeFriendsEntries();
+    _excludeFriendsFuture = future;
+    future.catchError((_) {
+      if (_excludeFriendsFuture == future) {
+        _excludeFriendsFuture = null;
+      }
+    });
+    return future;
+  }
+
+  Future<List<_ExcludeFriendEntry>> _loadExcludeFriendsEntries() async {
+    if (!mounted) return <_ExcludeFriendEntry>[];
+
+    final sessions = await widget.databaseService.getSessions();
+    if (!mounted) return <_ExcludeFriendEntry>[];
+    final privateSessions = sessions
+        .where(
+          (s) =>
+              !s.isGroup &&
+              !_excludedUsernames.contains(s.username.toLowerCase()),
+        )
+        .toList();
+    final usernames =
+        privateSessions.map((s) => s.username).where((u) => u.isNotEmpty).toSet();
+    usernames.addAll(_excludedUsernames);
+    final displayNames = await widget.databaseService.getDisplayNames(
+      usernames.toList(),
+    );
+    if (!mounted) return <_ExcludeFriendEntry>[];
+
+    final myWxid =
+        widget.databaseService.currentAccountWxid ??
+        await context.read<AppState>().configService.getManualWxid();
+    if (myWxid != null && myWxid.isNotEmpty) {
+      usernames.add(myWxid);
+    }
+    usernames.add('filehelper');
+
+    return usernames
+        .map((username) {
+          final lower = username.toLowerCase();
+          final displayName =
+              lower == 'filehelper'
+                  ? '文件传输助手'
+                  : (displayNames[username] ?? username);
+          return _ExcludeFriendEntry(
+            username: username,
+            displayName: displayName,
+          );
+        })
+        .toList();
   }
 
   Future<bool?> _showDatabaseChangedDialog() async {
@@ -535,130 +598,131 @@ class _AnalyticsPageState extends State<AnalyticsPage> {
       return;
     }
 
-    final sessions = await widget.databaseService.getSessions();
-    final privateSessions = sessions
-        .where(
-          (s) =>
-              !s.isGroup &&
-              !_excludedUsernames.contains(s.username.toLowerCase()),
-        )
-        .toList();
-    final usernames =
-        privateSessions.map((s) => s.username).where((u) => u.isNotEmpty).toSet();
-    usernames.addAll(_excludedUsernames);
-    final displayNames = await widget.databaseService.getDisplayNames(
-      usernames.toList(),
-    );
-
-    final myWxid =
-        widget.databaseService.currentAccountWxid ??
-        await context.read<AppState>().configService.getManualWxid();
-    if (myWxid != null && myWxid.isNotEmpty) {
-      usernames.add(myWxid);
-    }
-    usernames.add('filehelper');
-
-    final entries = usernames
-        .map((username) {
-          final lower = username.toLowerCase();
-          final displayName =
-              lower == 'filehelper'
-                  ? '文件传输助手'
-                  : (displayNames[username] ?? username);
-          return _ExcludeFriendEntry(
-            username: username,
-            displayName: displayName,
-          );
-        })
-        .toList();
-
     final selected = Set<String>.from(_excludedUsernames);
     String searchQuery = '';
+    final entriesFuture = _preloadExcludeFriends();
 
     final result = await showDialog<Set<String>>(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            final visibleEntries = (searchQuery.isEmpty
-                    ? entries
-                    : entries
-                        .where((entry) {
-                          final haystack =
-                              '${entry.displayName.toLowerCase()} ${entry.username.toLowerCase()}';
-                          return haystack.contains(searchQuery);
-                        })
-                        .toList())
-              ..sort((a, b) {
-                final aSelected = selected.contains(a.username.toLowerCase());
-                final bSelected = selected.contains(b.username.toLowerCase());
-                if (aSelected != bSelected) {
-                  return aSelected ? -1 : 1;
-                }
-                return a.displayName.compareTo(b.displayName);
-              });
-            return AlertDialog(
-              title: const Text('选择不统计的好友'),
-              content: SizedBox(
-                width: 460,
-                height: 480,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      decoration: const InputDecoration(
-                        hintText: '搜索好友',
-                        prefixIcon: Icon(Icons.search),
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
-                      onChanged: (value) {
-                        setDialogState(
-                          () => searchQuery = value.trim().toLowerCase(),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    Expanded(
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount: visibleEntries.length,
-                        itemBuilder: (context, index) {
-                          final entry = visibleEntries[index];
-                          final lower = entry.username.toLowerCase();
-                          final isChecked = selected.contains(lower);
-                          return CheckboxListTile(
-                            value: isChecked,
-                            onChanged: (checked) {
-                              setDialogState(() {
-                                if (checked == true) {
-                                  selected.add(lower);
-                                } else {
-                                  selected.remove(lower);
-                                }
-                              });
+            return FutureBuilder<List<_ExcludeFriendEntry>>(
+              future: entriesFuture,
+              builder: (context, snapshot) {
+                final isLoading =
+                    snapshot.connectionState != ConnectionState.done;
+                final hasError = snapshot.hasError;
+                final entries = snapshot.data ?? const <_ExcludeFriendEntry>[];
+                final visibleEntries = isLoading || hasError
+                    ? <_ExcludeFriendEntry>[]
+                    : (searchQuery.isEmpty
+                            ? entries
+                            : entries.where((entry) {
+                                final haystack =
+                                    '${entry.displayName.toLowerCase()} ${entry.username.toLowerCase()}';
+                                return haystack.contains(searchQuery);
+                              }))
+                        .toList()
+                  ..sort((a, b) {
+                    final aSelected =
+                        selected.contains(a.username.toLowerCase());
+                    final bSelected =
+                        selected.contains(b.username.toLowerCase());
+                    if (aSelected != bSelected) {
+                      return aSelected ? -1 : 1;
+                    }
+                    return a.displayName.compareTo(b.displayName);
+                  });
+                return AlertDialog(
+                  title: const Text('选择不统计的好友'),
+                  content: SizedBox(
+                    width: 460,
+                    height: 480,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextField(
+                          enabled: !isLoading && !hasError,
+                          decoration: const InputDecoration(
+                            hintText: '搜索好友',
+                            prefixIcon: Icon(Icons.search),
+                            isDense: true,
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (value) {
+                            setDialogState(
+                              () => searchQuery = value.trim().toLowerCase(),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        Expanded(
+                          child: Builder(
+                            builder: (context) {
+                              if (isLoading) {
+                                return const Center(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      CircularProgressIndicator(strokeWidth: 2),
+                                      SizedBox(height: 12),
+                                      Text('正在加载好友列表...'),
+                                    ],
+                                  ),
+                                );
+                              }
+                              if (hasError) {
+                                return const Center(
+                                  child: Text('加载好友列表失败'),
+                                );
+                              }
+                              return ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: visibleEntries.length,
+                                itemBuilder: (context, index) {
+                                  final entry = visibleEntries[index];
+                                  final lower = entry.username.toLowerCase();
+                                  final isChecked = selected.contains(lower);
+                                  return CheckboxListTile(
+                                    value: isChecked,
+                                    onChanged: (checked) {
+                                      setDialogState(() {
+                                        if (checked == true) {
+                                          selected.add(lower);
+                                        } else {
+                                          selected.remove(lower);
+                                        }
+                                      });
+                                    },
+                                    title: Text(entry.displayName),
+                                    subtitle: Text(entry.username),
+                                    dense: true,
+                                    controlAffinity:
+                                        ListTileControlAffinity.leading,
+                                  );
+                                },
+                              );
                             },
-                            title: Text(entry.displayName),
-                            subtitle: Text(entry.username),
-                            dense: true,
-                            controlAffinity: ListTileControlAffinity.leading,
-                          );
-                        },
-                      ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('取消'),
+                    ),
+                    ElevatedButton(
+                      onPressed: isLoading || hasError
+                          ? null
+                          : () => Navigator.pop(context, selected),
+                      child: const Text('应用'),
                     ),
                   ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('取消'),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context, selected),
-                  child: const Text('应用'),
-                ),
-              ],
+                );
+              },
             );
           },
         );

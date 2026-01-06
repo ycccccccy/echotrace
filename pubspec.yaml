@@ -1,7 +1,7 @@
 name: echotrace
 description: "A new Flutter project."
 publish_to: 'none'
-version: 3.0.4+1
+version: 3.0.6+1
 
 environment:
   sdk: ^3.9.2
