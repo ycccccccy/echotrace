@@ -209,6 +209,7 @@ class AppState extends ChangeNotifier {
 
   String _sanitizePathSegment(String name) {
     var sanitized = name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
+    if (Platform.isWindows) sanitized = sanitized.replaceAll(RegExp(r'[ .]+$'), '').trim();
     if (sanitized.isEmpty) return '未知联系人';
     if (sanitized.length > 60) sanitized = sanitized.substring(0, 60);
     return sanitized;
